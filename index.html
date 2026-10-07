@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Licencias OpenAI y ChatGPT · SGP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --fondo:#121A2C; --panel:#1E2A44; --panel2:#18223A; --borde:#2B3A5C;
+  --texto:#EEF2F9; --suave:#A9B8D4; --tenue:#7C8CAB;
+  --oro:#C49A2A; --oro2:#E3BC55;
+  --standard:#6FA8DC; --premium:#E3BC55; --api:#4FBFA8;
+  --ok:#5CC08A; --aviso:#E8A33D; --error:#EC7063;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:Inter,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--fondo);color:var(--texto);font-family:var(--sans);font-size:15px;line-height:1.45}
+.pagina{max-width:1360px;margin:0 auto;padding:24px 16px 48px;display:flex;flex-direction:column;gap:18px}
+
+header{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;padding-bottom:16px;border-bottom:1px solid var(--borde)}
+.marca{display:flex;align-items:center;gap:14px;min-width:0}
+.sello{font-family:var(--mono);font-weight:600;font-size:19px;letter-spacing:2px;color:var(--fondo);background:var(--oro);padding:7px 11px;border-radius:4px}
+h1{margin:0;font-size:23px;font-weight:700;letter-spacing:-.3px}
+.sub{margin-top:2px;font-size:13.5px;color:var(--suave)}
+.acciones{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.chip{font-family:var(--mono);font-size:12.5px;color:var(--suave);border:1px solid var(--borde);padding:7px 11px;border-radius:4px;white-space:nowrap}
+.chip.demo{color:var(--oro2);border-color:var(--oro);font-weight:600}
+button{font:inherit;font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--fondo);background:var(--oro2);border:0;padding:8px 13px;border-radius:4px;cursor:pointer}
+button:hover{background:#F2D588}
+button:disabled{opacity:.55;cursor:default}
+button:focus-visible,input:focus-visible{outline:2px solid var(--oro2);outline-offset:2px}
+
+.fuentes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.fuente{display:flex;gap:10px;align-items:flex-start;background:var(--panel2);border:1px solid var(--borde);border-radius:6px;padding:10px 12px;font-size:13px;color:var(--suave)}
+.fuente b{color:var(--texto);font-weight:600}
+.punto{flex:none;width:9px;height:9px;border-radius:50%;margin-top:5px;background:var(--tenue)}
+.punto.ok{background:var(--ok)} .punto.error{background:var(--error)} .punto.sin_configurar{background:var(--aviso)}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
+.tarjeta{background:var(--panel);border:1px solid var(--borde);border-radius:8px;padding:18px}
+.kpi .rot{font-size:12px;color:var(--suave);text-transform:uppercase;letter-spacing:.8px}
+.kpi .val{margin-top:8px;font-family:var(--mono);font-size:34px;font-weight:600;line-height:1;white-space:nowrap}
+.kpi .nota{margin-top:8px;font-size:12.5px;color:var(--suave)}
+.kpi.destacado{border-color:var(--oro)}
+
+.fila{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+h2{margin:0 0 4px;font-size:16px;font-weight:600}
+.ayuda{font-size:12.5px;color:var(--suave);margin:0 0 14px}
+
+.barra{display:flex;height:26px;border-radius:4px;overflow:hidden;gap:2px;background:var(--panel2)}
+.barra span{display:block;min-width:3px}
+.leyenda{display:flex;flex-direction:column;gap:9px;margin-top:14px}
+.leyenda div{display:flex;align-items:center;gap:9px;font-size:13.5px}
+.leyenda i{flex:none;width:11px;height:11px;border-radius:2px}
+.leyenda .n{margin-left:auto;font-family:var(--mono);font-weight:600}
+.leyenda .p{font-family:var(--mono);color:var(--suave);width:44px;text-align:right;font-size:12.5px}
+
+.lista-bar{display:flex;flex-direction:column;gap:9px}
+.lista-bar .l{display:grid;grid-template-columns:minmax(90px,34%) 1fr 34px;gap:10px;align-items:center;font-size:13px}
+.lista-bar .l span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lista-bar .pista{height:10px;background:var(--panel2);border-radius:2px}
+.lista-bar .pista i{display:block;height:100%;background:var(--standard);border-radius:2px}
+.lista-bar .n{font-family:var(--mono);text-align:right}
+
+.grafico{position:relative;width:100%}
+.grafico svg{display:block;width:100%;overflow:visible}
+.grafico text{font-family:var(--mono);font-size:11px;fill:var(--suave)}
+.globo{position:absolute;pointer-events:none;background:#0C1322;border:1px solid var(--oro);border-radius:4px;padding:6px 9px;font-family:var(--mono);font-size:12px;white-space:nowrap;transform:translate(-50%,-100%);display:none;z-index:2}
+.claves{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:8px;font-size:12.5px;color:var(--suave)}
+.claves span{display:flex;align-items:center;gap:6px}
+.claves i{width:14px;height:3px;border-radius:2px}
+
+.vacio{font-size:13.5px;color:var(--suave);background:var(--panel2);border:1px dashed var(--borde);border-radius:6px;padding:14px}
+.vacio code{font-family:var(--mono);color:var(--oro2);font-size:12.5px}
+
+.cab-tabla{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px}
+input[type=search]{font:inherit;font-size:14px;color:var(--texto);background:var(--panel2);border:1px solid var(--borde);border-radius:4px;padding:8px 11px;width:min(100%,280px)}
+input::placeholder{color:var(--tenue)}
+.tabla{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-size:11.5px;font-weight:600;color:var(--suave);text-transform:uppercase;letter-spacing:.7px;padding:8px 10px;border-bottom:1px solid var(--borde);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid rgba(43,58,92,.55);white-space:nowrap}
+td.num,th.num{text-align:right;font-family:var(--mono)}
+td .correo{display:block;font-family:var(--mono);font-size:12px;color:var(--suave)}
+tr:last-child td{border-bottom:0}
+.eti{display:inline-block;font-family:var(--mono);font-size:11.5px;font-weight:600;padding:2px 7px;border-radius:3px;border:1px solid var(--borde);color:var(--suave)}
+.eti.premium{color:var(--premium);border-color:var(--oro)}
+.eti.standard{color:var(--standard);border-color:#3F5F86}
+.eti.alerta{color:var(--error);border-color:#7A3F3A}
+.pie-tabla{margin-top:10px;font-size:12.5px;color:var(--suave)}
+footer{font-size:12px;color:var(--tenue);text-align:center;padding-top:6px}
+#error{display:none;background:#3A1E22;border:1px solid var(--error);border-radius:6px;padding:12px 14px;font-size:14px}
+@media (max-width:560px){
+  h1{font-size:19px} .kpi .val{font-size:28px} .tarjeta{padding:15px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+</style>
+</head>
+<body>
+<div class="pagina">
+
+  <header>
+    <div class="marca">
+      <div class="sello" id="sello">SGP</div>
+      <div>
+        <h1>Licencias OpenAI y ChatGPT</h1>
+        <div class="sub">Puestos de ChatGPT Business y acceso a la API de OpenAI</div>
+      </div>
+    </div>
+    <div class="acciones">
+      <span class="chip demo" id="chip-demo" hidden>DATOS SIMULADOS</span>
+      <span class="chip" id="chip-fecha">Cargando…</span>
+      <button id="btn" type="button">Actualizar</button>
+    </div>
+  </header>
+
+  <div id="error" role="alert"></div>
+  <section class="fuentes" id="fuentes" aria-label="Estado de las fuentes de datos"></section>
+  <section class="kpis" id="kpis" aria-label="Resumen"></section>
+
+  <section class="fila">
+    <div class="tarjeta" id="t-tipo"></div>
+    <div class="tarjeta" id="t-cruce"></div>
+    <div class="tarjeta" id="t-dep" hidden></div>
+  </section>
+
+  <section class="fila">
+    <div class="tarjeta">
+      <h2>Evolución de puestos</h2>
+      <p class="ayuda">Foto diaria guardada por el servidor.</p>
+      <div id="g-hist"></div>
+    </div>
+    <div class="tarjeta">
+      <h2>Coste diario de la API</h2>
+      <p class="ayuda" id="g-coste-ayuda">Últimos 30 días.</p>
+      <div id="g-coste"></div>
+    </div>
+  </section>
+
+  <section class="tarjeta">
+    <div class="cab-tabla">
+      <div><h2>Miembros de ChatGPT</h2><div class="ayuda" style="margin:0" id="m-ayuda"></div></div>
+      <input type="search" id="buscar" placeholder="Buscar nombre, email, área…" aria-label="Buscar miembros">
+    </div>
+    <div id="m-tabla"></div>
+  </section>
+
+  <section class="tarjeta">
+    <div class="cab-tabla"><div><h2>Usuarios de la API (OpenAI Platform)</h2><div class="ayuda" style="margin:0" id="a-ayuda"></div></div></div>
+    <div id="a-tabla"></div>
+  </section>
+
+  <footer id="pie"></footer>
+</div>
+
+<script>
+(function(){
+"use strict";
+var D=null, filtro="";
+var $=function(id){return document.getElementById(id)};
+function esc(v){return String(v==null?"":v).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+var nf=new Intl.NumberFormat("es-ES");
+function num(v){return v==null?"—":nf.format(v)}
+function dinero(v,moneda,dec){if(v==null)return"—";try{return new Intl.NumberFormat("es-ES",{style:"currency",currency:moneda||"USD",maximumFractionDigits:dec==null?0:dec,minimumFractionDigits:dec==null?0:dec}).format(v)}catch(e){return nf.format(v)+" "+esc(moneda)}}
+function compacto(v){if(v==null)return"—";return new Intl.NumberFormat("es-ES",{notation:"compact",maximumFractionDigits:1}).format(v)}
+function fechaCorta(iso){if(!iso)return"—";var p=iso.slice(0,10).split("-");return p[2]+"/"+p[1]}
+function fechaLarga(iso){if(!iso)return"—";var p=iso.slice(0,10).split("-");return p[2]+"/"+p[1]+"/"+p[0]}
+var NOMBRE_TIPO={standard:"Standard",premium:"Premium",sin_dato:"Sin dato"};
+var COLOR_TIPO={standard:"var(--standard)",premium:"var(--premium)"};
+function nombreTipo(t){return NOMBRE_TIPO[t]||t}
+function vacio(html){return '<div class="vacio">'+html+'</div>'}
+
+/* ------------------------------------------------------------ fuentes */
+function pintarFuentes(){
+  var c=D.chatgpt,a=D.api,h="";
+  var txtC=c.estado==="ok"?"Lista de miembros del "+fechaLarga(c.archivo_fecha)+" ("+num(c.total)+" filas)":c.mensaje;
+  var txtA=a.estado==="ok"?"Admin API conectada"+(a.avisos&&a.avisos.length?" · con avisos: "+a.avisos.join(" · "):""):a.mensaje;
+  h+='<div class="fuente"><span class="punto '+esc(c.estado)+'"></span><div><b>ChatGPT Business</b><br>'+esc(txtC)+'</div></div>';
+  h+='<div class="fuente"><span class="punto '+esc(a.estado)+'"></span><div><b>OpenAI Platform</b><br>'+esc(txtA)+'</div></div>';
+  $("fuentes").innerHTML=h;
+}
+
+/* --------------------------------------------------------------- KPIs */
+function kpi(rot,val,nota,destacado){return '<div class="tarjeta kpi'+(destacado?" destacado":"")+'"><div class="rot">'+esc(rot)+'</div><div class="val">'+val+'</div><div class="nota">'+nota+'</div></div>'}
+function pintarKpis(){
+  var c=D.chatgpt,a=D.api,h="",ok=c.estado==="ok",okA=a.estado==="ok";
+  var st=ok?(c.por_tipo.standard||0):null, pr=ok?(c.por_tipo.premium||0):null;
+  h+=kpi("Puestos ChatGPT",ok?num(c.total):"—",ok?num(st)+" Standard · "+num(pr)+" Premium":"Sin datos",true);
+  if(ok&&c.sin_uso!=null)h+=kpi("Sin uso +"+D.dias_sin_uso+" días",num(c.sin_uso),c.total?Math.round(c.sin_uso/c.total*100)+" % de los puestos":"");
+  if(ok&&c.coste_mensual!=null)h+=kpi("Coste puestos / mes",dinero(c.coste_mensual,c.moneda),"Según precio en config.json");
+  h+=kpi("Usuarios API",okA?num(a.total_usuarios):"—",okA?(a.proyectos!=null?num(a.proyectos)+" proyectos activos":"Organización de OpenAI"):"Sin datos");
+  h+=kpi("Coste API "+D.dias_ventana+" días",okA?dinero(a.coste_30d,a.moneda):"—",okA&&a.peticiones_30d!=null?num(a.peticiones_30d)+" peticiones · "+compacto(a.tokens_30d)+" tokens":"Sin datos");
+  $("kpis").innerHTML=h;
+}
+
+/* ---------------------------------------------------- puestos por tipo */
+function pintarTipo(){
+  var c=D.chatgpt,h='<h2>Puestos por tipo</h2><p class="ayuda">Reparto de los puestos asignados en el workspace.</p>';
+  if(c.estado!=="ok"){$("t-tipo").innerHTML=h+vacio(esc(c.mensaje)+'<br>Copia la lista de miembros en <code>data/chatgpt_miembros.csv</code>.');return}
+  var tipos=Object.keys(c.por_tipo).sort(function(x,y){return c.por_tipo[y]-c.por_tipo[x]});
+  h+='<div class="barra" role="img" aria-label="Reparto de puestos por tipo">';
+  tipos.forEach(function(t){h+='<span style="flex:'+c.por_tipo[t]+';background:'+(COLOR_TIPO[t]||"var(--tenue)")+'"></span>'});
+  h+='</div><div class="leyenda">';
+  tipos.forEach(function(t){h+='<div><i style="background:'+(COLOR_TIPO[t]||"var(--tenue)")+'"></i>'+esc(nombreTipo(t))+'<span class="n">'+num(c.por_tipo[t])+'</span><span class="p">'+Math.round(c.por_tipo[t]/c.total*100)+' %</span></div>'});
+  h+='</div>';
+  var roles=Object.keys(c.por_rol);
+  if(roles.length){h+='<p class="ayuda" style="margin:16px 0 0">Roles: '+roles.map(function(r){return esc(r)+" "+num(c.por_rol[r])}).join(" · ")+'</p>'}
+  $("t-tipo").innerHTML=h;
+}
+
+/* --------------------------------------------------------------- cruce */
+function pintarCruce(){
+  var x=D.cruce,h='<h2>ChatGPT frente a API</h2><p class="ayuda">Mismas personas en las dos consolas, cruzadas por email.</p>';
+  if(!x){$("t-cruce").innerHTML=h+vacio("Disponible cuando estén configuradas las dos fuentes.");return}
+  var filas=[["Solo puesto de ChatGPT",x.solo_chatgpt,"var(--standard)"],["ChatGPT y API",x.ambos,"var(--premium)"],["Solo API",x.solo_api,"var(--api)"]];
+  var total=x.solo_chatgpt+x.ambos+x.solo_api||1;
+  h+='<div class="barra" role="img" aria-label="Cruce de cuentas">';
+  filas.forEach(function(f){if(f[1])h+='<span style="flex:'+f[1]+';background:'+f[2]+'"></span>'});
+  h+='</div><div class="leyenda">';
+  filas.forEach(function(f){h+='<div><i style="background:'+f[2]+'"></i>'+f[0]+'<span class="n">'+num(f[1])+'</span><span class="p">'+Math.round(f[1]/total*100)+' %</span></div>'});
+  h+='</div>';
+  if(x.solo_api){h+='<p class="ayuda" style="margin:16px 0 0">Con API y sin puesto: '+x.emails_solo_api.slice(0,4).map(esc).join(", ")+(x.emails_solo_api.length>4?" y "+(x.emails_solo_api.length-4)+" más":"")+'</p>'}
+  $("t-cruce").innerHTML=h;
+}
+
+/* ------------------------------------------------------- departamentos */
+function pintarDep(){
+  var lista=(D.chatgpt.por_departamento||[]),caja=$("t-dep");
+  if(!lista.length){caja.hidden=true;return}
+  caja.hidden=false;
+  var max=lista[0].n,h='<h2>Puestos por área</h2><p class="ayuda">Según la columna de departamento del CSV.</p><div class="lista-bar">';
+  lista.slice(0,10).forEach(function(d){h+='<div class="l"><span title="'+esc(d.nombre)+'">'+esc(d.nombre)+'</span><div class="pista"><i style="width:'+(d.n/max*100)+'%"></i></div><span class="n">'+num(d.n)+'</span></div>'});
+  caja.innerHTML=h+'</div>';
+}
+
+/* ------------------------------------------------------------ gráficos */
+function lienzo(caja,alto){
+  caja.innerHTML='<div class="grafico"><div class="globo"></div></div>';
+  var g=caja.firstChild,ancho=Math.max(260,g.clientWidth);
+  return{g:g,globo:g.firstChild,w:ancho,h:alto,m:{i:36,d:10,a:10,b:24}};
+}
+function escalaY(max){var paso=Math.pow(10,Math.floor(Math.log10(max||1)));var r=max/paso;paso=r<=2?paso/2:r<=5?paso:paso*2;if(paso>=1)paso=Math.max(1,Math.round(paso));var tope=Math.ceil((max||1)/paso)*paso;var t=[];for(var v=0;v<=tope+1e-9;v+=paso)t.push(+v.toFixed(4));return{tope:tope,marcas:t}}
+function ejes(L,esc_y,fmt){
+  var s="",ih=L.h-L.m.a-L.m.b;
+  esc_y.marcas.forEach(function(v){var y=L.m.a+ih-(v/esc_y.tope)*ih;s+='<line x1="'+L.m.i+'" x2="'+(L.w-L.m.d)+'" y1="'+y+'" y2="'+y+'" stroke="#2B3A5C" stroke-width="1"/><text x="'+(L.m.i-6)+'" y="'+(y+4)+'" text-anchor="end">'+fmt(v)+'</text>'});
+  return s;
+}
+function etiquetasX(L,fechas,xDe){
+  var s="",n=fechas.length,idx=n<=1?[0]:n<4?[0,n-1]:[0,Math.floor((n-1)/2),n-1];
+  idx.forEach(function(i,k){var ancla=k===0?"start":k===idx.length-1&&n>1?"end":"middle";s+='<text x="'+xDe(i)+'" y="'+(L.h-6)+'" text-anchor="'+ancla+'">'+fechaCorta(fechas[i])+'</text>'});
+  return s;
+}
+function conGlobo(L,n,xDe,html){
+  var svg=L.g.querySelector("svg"),guia=svg.querySelector(".guia");
+  function mover(e){
+    var r=svg.getBoundingClientRect(),x=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
+    var paso=n>1?(L.w-L.m.i-L.m.d)/(n-1):1,i=Math.max(0,Math.min(n-1,Math.round((x-L.m.i)/paso)));
+    if(xDe.centro)i=Math.max(0,Math.min(n-1,Math.floor((x-L.m.i)/((L.w-L.m.i-L.m.d)/n))));
+    var px=xDe(i);
+    L.globo.innerHTML=html(i);L.globo.style.display="block";
+    L.globo.style.left=Math.max(70,Math.min(L.w-70,px))+"px";L.globo.style.top=(L.m.a+2)+"px";
+    if(guia){guia.setAttribute("x1",px);guia.setAttribute("x2",px);guia.style.display="block"}
+  }
+  function fuera(){L.globo.style.display="none";if(guia)guia.style.display="none"}
+  svg.addEventListener("mousemove",mover);svg.addEventListener("touchstart",mover,{passive:true});svg.addEventListener("touchmove",mover,{passive:true});
+  svg.addEventListener("mouseleave",fuera);svg.addEventListener("touchend",fuera);
+}
+function pintarHistorico(){
+  var caja=$("g-hist"),datos=(D.historico||[]).filter(function(f){return f.chatgpt_total!=null||f.api_usuarios!=null});
+  if(datos.length<2){caja.innerHTML=vacio("El histórico se construye solo: el servidor guarda una foto cada día. Con dos días ya aparece la gráfica.");return}
+  var series=[["chatgpt_total","Puestos ChatGPT","#6FA8DC"],["chatgpt_premium","Premium","#E3BC55"],["api_usuarios","Usuarios API","#4FBFA8"]].filter(function(s){return datos.some(function(f){return f[s[0]]!=null})});
+  var max=0;datos.forEach(function(f){series.forEach(function(s){if(f[s[0]]>max)max=f[s[0]]})});
+  var claves='<div class="claves">'+series.map(function(s){return '<span><i style="background:'+s[2]+'"></i>'+s[1]+'</span>'}).join("")+'</div>';
+  caja.innerHTML="";var cont=document.createElement("div");caja.appendChild(cont);
+  var L=lienzo(cont,220),ey=escalaY(max),iw=L.w-L.m.i-L.m.d,ih=L.h-L.m.a-L.m.b,n=datos.length;
+  var xDe=function(i){return L.m.i+(n>1?i/(n-1):0)*iw},yDe=function(v){return L.m.a+ih-(v/ey.tope)*ih};
+  var s='<svg viewBox="0 0 '+L.w+' '+L.h+'" height="'+L.h+'" role="img" aria-label="Evolución de puestos">'+ejes(L,ey,num)+etiquetasX(L,datos.map(function(f){return f.fecha}),xDe);
+  s+='<line class="guia" y1="'+L.m.a+'" y2="'+(L.m.a+ih)+'" stroke="#7C8CAB" stroke-dasharray="3 3" style="display:none"/>';
+  series.forEach(function(se){var d="",abierto=false;datos.forEach(function(f,i){if(f[se[0]]==null){abierto=false;return}d+=(abierto?"L":"M")+xDe(i).toFixed(1)+" "+yDe(f[se[0]]).toFixed(1);abierto=true});s+='<path d="'+d+'" fill="none" stroke="'+se[2]+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'});
+  L.g.insertAdjacentHTML("beforeend",s+'</svg>');
+  cont.insertAdjacentHTML("afterbegin",claves);
+  conGlobo(L,n,xDe,function(i){var f=datos[i];return '<b>'+fechaLarga(f.fecha)+'</b><br>'+series.map(function(se){return se[1]+": "+num(f[se[0]])}).join("<br>")});
+}
+function pintarCoste(){
+  var caja=$("g-coste"),a=D.api,datos=a.coste_diario||[];
+  $("g-coste-ayuda").textContent="Últimos "+D.dias_ventana+" días"+(a.coste_30d!=null?" · total "+dinero(a.coste_30d,a.moneda,2):"")+".";
+  if(a.estado!=="ok"){caja.innerHTML=vacio(esc(a.mensaje)+'<br>Crea una Admin key de solo lectura y ponla en <code>OPENAI_ADMIN_KEY</code>.');return}
+  if(!datos.length){caja.innerHTML=vacio("La API no ha devuelto coste en este periodo.");return}
+  var max=0;datos.forEach(function(d){if(d.valor>max)max=d.valor});
+  var L=lienzo(caja,220),ey=escalaY(max||1),iw=L.w-L.m.i-L.m.d,ih=L.h-L.m.a-L.m.b,n=datos.length,hueco=iw/n,ancho=Math.max(2,hueco-3);
+  var xDe=function(i){return L.m.i+hueco*i+hueco/2};xDe.centro=true;
+  var s='<svg viewBox="0 0 '+L.w+' '+L.h+'" height="'+L.h+'" role="img" aria-label="Coste diario de la API">'+ejes(L,ey,function(v){return nf.format(v)})+etiquetasX(L,datos.map(function(d){return d.fecha}),xDe);
+  datos.forEach(function(d,i){var alto=Math.max(d.valor>0?1.5:0,(d.valor/ey.tope)*ih);s+='<rect x="'+(xDe(i)-ancho/2).toFixed(1)+'" y="'+(L.m.a+ih-alto).toFixed(1)+'" width="'+ancho.toFixed(1)+'" height="'+alto.toFixed(1)+'" rx="1.5" fill="#4FBFA8"/>'});
+  L.g.insertAdjacentHTML("beforeend",s+'</svg>');
+  conGlobo(L,n,xDe,function(i){return '<b>'+fechaLarga(datos[i].fecha)+'</b><br>'+dinero(datos[i].valor,a.moneda,2)});
+}
+
+/* -------------------------------------------------------------- tablas */
+function pintarMiembros(){
+  var c=D.chatgpt,caja=$("m-tabla");
+  if(c.estado!=="ok"){$("m-ayuda").textContent="";caja.innerHTML=vacio(esc(c.mensaje));$("buscar").hidden=true;return}
+  $("buscar").hidden=false;
+  var hayAct=c.miembros.some(function(m){return m.ultima_actividad}),hayDep=c.miembros.some(function(m){return m.departamento});
+  var q=filtro.trim().toLowerCase();
+  var lista=c.miembros.filter(function(m){return !q||(m.nombre+" "+m.email+" "+m.departamento+" "+m.puesto+" "+m.rol).toLowerCase().indexOf(q)>=0});
+  $("m-ayuda").textContent=q?lista.length+" de "+c.total+" miembros":c.total+" miembros";
+  if(!lista.length){caja.innerHTML=vacio("Ningún miembro coincide con la búsqueda.");return}
+  var h='<div class="tabla"><table><thead><tr><th>Miembro</th><th>Puesto</th><th>Rol</th>'+(hayDep?"<th>Área</th>":"")+(hayAct?'<th class="num">Última actividad</th>':"")+'</tr></thead><tbody>';
+  lista.forEach(function(m){
+    var parado=m.dias_inactivo!=null&&m.dias_inactivo>D.dias_sin_uso;
+    h+='<tr><td>'+esc(m.nombre)+'<span class="correo">'+esc(m.email)+'</span></td><td><span class="eti '+esc(m.puesto)+'">'+esc(nombreTipo(m.puesto))+'</span></td><td>'+esc(m.rol)+'</td>'+(hayDep?"<td>"+esc(m.departamento||"—")+"</td>":"")+(hayAct?'<td class="num">'+(m.ultima_actividad?fechaLarga(m.ultima_actividad)+(parado?' <span class="eti alerta">'+m.dias_inactivo+' d</span>':""):'<span class="eti alerta">sin uso</span>')+'</td>':"")+'</tr>';
+  });
+  caja.innerHTML=h+'</tbody></table></div>';
+}
+function pintarApi(){
+  var a=D.api,caja=$("a-tabla");
+  if(a.estado!=="ok"){$("a-ayuda").textContent="";caja.innerHTML=vacio(esc(a.mensaje));return}
+  $("a-ayuda").textContent=a.total_usuarios+" usuarios · uso de los últimos "+D.dias_ventana+" días";
+  if(!a.usuarios.length){caja.innerHTML=vacio("La organización no tiene usuarios.");return}
+  var h='<div class="tabla"><table><thead><tr><th>Usuario</th><th>Rol</th><th class="num">Alta</th><th class="num">Peticiones</th><th class="num">Tokens</th></tr></thead><tbody>';
+  a.usuarios.forEach(function(u){h+='<tr><td>'+esc(u.nombre)+'<span class="correo">'+esc(u.email)+'</span></td><td>'+esc(u.rol)+'</td><td class="num">'+fechaLarga(u.alta)+'</td><td class="num">'+num(u.peticiones)+'</td><td class="num">'+compacto(u.tokens)+'</td></tr>'});
+  caja.innerHTML=h+'</tbody></table></div><div class="pie-tabla">El uso por usuario solo cuenta las peticiones de chat/completions atribuidas a una persona; las claves de servicio no aparecen aquí.</div>';
+}
+
+/* --------------------------------------------------------------- todo */
+function pintar(){
+  if(!D)return;
+  $("sello").textContent=D.organizacion||"SGP";
+  $("chip-demo").hidden=!D.demo;
+  var f=new Date(D.generado);
+  $("chip-fecha").textContent="Actualizado "+f.toLocaleDateString("es-ES",{day:"2-digit",month:"2-digit"})+" "+f.toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"});
+  pintarFuentes();pintarKpis();pintarTipo();pintarCruce();pintarDep();pintarHistorico();pintarCoste();pintarMiembros();pintarApi();
+  $("pie").textContent="Dashboard interno de Ciberseguridad · se refresca cada "+D.refresco_minutos+" min"+(D.demo?" · datos simulados":"");
+}
+function cargar(ruta){
+  if(window.__DATOS__){D=window.__DATOS__;pintar();return Promise.resolve()}
+  return fetch(ruta||"api/datos",{cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(j){D=j;$("error").style.display="none";pintar()}).catch(function(e){var c=$("error");c.textContent="No se pudieron cargar los datos del servidor ("+e.message+"). Lo que se ve puede estar desactualizado.";c.style.display="block";$("chip-fecha").textContent=D?$("chip-fecha").textContent:"Sin conexión"});
+}
+$("btn").addEventListener("click",function(){var b=this;b.disabled=true;b.textContent="Actualizando…";cargar("api/refrescar").then(function(){b.disabled=false;b.textContent="Actualizar"})});
+$("buscar").addEventListener("input",function(){filtro=this.value;pintarMiembros()});
+var t;window.addEventListener("resize",function(){clearTimeout(t);t=setTimeout(function(){if(D){pintarHistorico();pintarCoste()}},150)});
+cargar();setInterval(function(){cargar()},5*60*1000);
+})();
+</script>
+</body>
+</html>

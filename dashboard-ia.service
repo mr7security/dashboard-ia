@@ -1,0 +1,27 @@
+[Unit]
+Description=Dashboard de licencias OpenAI / ChatGPT (SGP)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dashboard-ia
+Group=dashboard-ia
+WorkingDirectory=/opt/dashboard-ia
+EnvironmentFile=-/etc/dashboard-ia.env
+ExecStart=/usr/bin/python3 /opt/dashboard-ia/proxy.py
+Restart=on-failure
+RestartSec=10
+
+# Endurecimiento
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/dashboard-ia/data
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

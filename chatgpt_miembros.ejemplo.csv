@@ -1,0 +1,3 @@
+name,email,role,seat_type,department,last_active
+Nombre Apellido,nombre.apellido@empresa.es,member,standard,Administración,2026-10-05
+Otra Persona,otra.persona@empresa.es,admin,premium,Sistemas,2026-09-12

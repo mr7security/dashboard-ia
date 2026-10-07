@@ -1,0 +1,8 @@
+{
+  "puerto": 8090,
+  "escucha": "0.0.0.0",
+  "refresco_minutos": 60,
+  "organizacion": "SGP",
+  "moneda_puestos": "USD",
+  "precio_puesto": { "standard": 0, "premium": 0 }
+}
