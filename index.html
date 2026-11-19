@@ -40,9 +40,10 @@ html[data-tema=claro] .logo.claro{display:block}
 h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.3px}
 .sub{margin-top:2px;font-size:13.5px;color:var(--suave)}
 .acciones{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.reloj{text-align:right;font-family:var(--mono);line-height:1.25;margin-right:4px}
-.reloj b{display:block;font-size:17px;font-weight:600}
-.reloj span{font-size:11.5px;color:var(--suave)}
+#reloj-box{text-align:right;line-height:1.2;margin-right:4px}
+#clock{font-size:.85rem;color:var(--texto);font-variant-numeric:tabular-nums}
+#servidor{font-size:.72rem;color:var(--suave);margin-top:2px}
+#servidor:not(:empty)::before{content:"🖥 "}
 .chip{font-family:var(--mono);font-size:12.5px;color:var(--suave);border:1px solid var(--borde);padding:7px 11px;border-radius:4px;white-space:nowrap}
 .chip.demo{color:var(--oro2);border-color:var(--oro);font-weight:600}
 button{font:inherit;cursor:pointer}
@@ -159,7 +160,7 @@ footer{font-size:12px;color:var(--tenue);text-align:center;padding-top:6px}
   h1{font-size:19px} .kpi .val{font-size:23px} .tarjeta{padding:14px}
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
   .fila.dos{grid-template-columns:minmax(0,1fr)} .fila{grid-template-columns:minmax(0,1fr)}
-  .reloj{display:none} .nota-rango{margin-left:0}
+  #reloj-box{display:none} .nota-rango{margin-left:0}
 }
 </style>
 </head>
@@ -176,7 +177,7 @@ footer{font-size:12px;color:var(--tenue);text-align:center;padding-top:6px}
       </div>
     </div>
     <div class="acciones">
-      <div class="reloj" aria-hidden="true"><b id="hora">--:--:--</b><span id="fecha-larga"></span></div>
+      <div id="reloj-box"><div id="clock">--/--/---- --:--:--</div><div id="servidor"></div></div>
       <span class="chip demo" id="chip-demo" hidden>DATOS SIMULADOS</span>
       <span class="chip" id="chip-fecha">Cargando…</span>
       <button class="btn" id="btn-tema" type="button" aria-label="Cambiar entre tema claro y oscuro">Tema claro</button>
@@ -895,6 +896,7 @@ function pintar(){
   if(!D)return;
   preparar();
   $("chip-demo").hidden=!D.demo;
+  $("servidor").textContent=D.servidor||"";
   var f=new Date(D.generado);
   $("chip-fecha").textContent="Actualizado "+f.toLocaleDateString("es-ES",{day:"2-digit",month:"2-digit"})+" "+f.toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"});
   var fu=$("fuente"),mal=D.fuente.estado!=="ok"||(D.fuente.avisos||[]).length;
@@ -947,7 +949,10 @@ document.addEventListener("change",function(e){
 function tema(t){document.documentElement.setAttribute("data-tema",t);$("btn-tema").textContent=t==="claro"?"Tema oscuro":"Tema claro";try{localStorage.setItem("dash-ia-tema",t)}catch(e){}}
 $("btn-tema").addEventListener("click",function(){tema(document.documentElement.getAttribute("data-tema")==="claro"?"oscuro":"claro")});
 try{if(localStorage.getItem("dash-ia-tema")==="claro")tema("claro")}catch(e){}
-function reloj(){var a=new Date();$("hora").textContent=a.toLocaleTimeString("es-ES");$("fecha-larga").textContent=a.toLocaleDateString("es-ES",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}
+/* mismo formato que el resto de dashboards de SGP */
+var DIAS_SEMANA=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"],MESES_ES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+function fmtReloj(d){var p=function(n){return String(n).padStart(2,"0")};return DIAS_SEMANA[d.getDay()]+", "+d.getDate()+" de "+MESES_ES[d.getMonth()]+" de "+d.getFullYear()+", "+p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds())}
+function reloj(){$("clock").textContent=fmtReloj(new Date())}
 reloj();setInterval(reloj,1000);
 var h0=(location.hash||"").slice(1);if(PEST[h0])TAB=h0;
 var tr;window.addEventListener("resize",function(){clearTimeout(tr);tr=setTimeout(function(){if(D&&!$("ficha").open)pintarTab()},180)});

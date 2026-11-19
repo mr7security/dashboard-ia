@@ -31,6 +31,7 @@ import gzip
 import hmac
 import json
 import os
+import socket
 import sys
 import threading
 import time
@@ -80,6 +81,8 @@ CONFIG_POR_DEFECTO = {
     "dias_activo": 7,        # activo = con uso en los últimos N días
     "dias_reasignar": 30,    # candidato a reasignar = sin uso en N días
     "retencion_dias": 730,   # cuánto histórico de uso se conserva
+    # Nombre que se muestra bajo el reloj. Vacío: el nombre de la máquina.
+    "nombre_servidor": "",
     # Nombre de cada empresa por dominio de correo: {"ejemplo.es": "Empresa"}
     "empresas": {},
 }
@@ -626,6 +629,7 @@ class Estado:
                 "hoy": hoy_utc().isoformat(),
                 "demo": self.demo,
                 "organizacion": cfg.get("organizacion", ""),
+                "servidor": cfg.get("nombre_servidor") or socket.gethostname(),
                 "refresco_minutos": cfg.get("refresco_minutos", 60),
                 "cfg": publico(cfg),
                 "fuente": fuente,
