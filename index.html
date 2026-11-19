@@ -255,7 +255,8 @@ function num(v){return v==null?"—":nf.format(Math.round(v))}
 function dec(v){return v==null?"—":nf1.format(v)}
 function compacto(v){if(v==null)return"—";var a=Math.abs(v);if(a>=1e9)return nf.format(Math.round(v/1e6))+" M";if(a>=1e6)return nf1.format(v/1e6)+" M";if(a>=1e4)return nf1.format(v/1e3)+" mil";return nf.format(Math.round(v))}
 function pct(n,t){return t?Math.round(n/t*100):0}
-function dinero(v,d){if(v==null||!isFinite(v))return"—";var m=D.cfg.moneda||"USD";try{return new Intl.NumberFormat("es-ES",{style:"currency",currency:m,maximumFractionDigits:d||0,minimumFractionDigits:d||0}).format(v)}catch(e){return nf.format(v)+" "+m}}
+function pct1(n,t){if(!t||!n)return"0 %";var p=n/t*100;return p<0.1?"<0,1 %":p<10?nf1.format(p)+" %":Math.round(p)+" %"}
+function dinero(v,d){if(v==null||!isFinite(v))return"—";var m=D.cfg.moneda||"USD";var o={style:"currency",currency:m,maximumFractionDigits:d||0,minimumFractionDigits:d||0};try{return new Intl.NumberFormat("es-ES",Object.assign({useGrouping:"always"},o)).format(v)}catch(e){try{return new Intl.NumberFormat("es-ES",o).format(v)}catch(x){return nf.format(v)+" "+m}}}
 function fechaCorta(iso){if(!iso)return"—";var p=iso.split("-");return p[2]+"/"+p[1]}
 function fechaLarga(iso){if(!iso)return"—";var p=iso.slice(0,10).split("-");return p[2]+"/"+p[1]+"/"+p[0]}
 function aUTC(iso){var p=iso.split("-");return Date.UTC(+p[0],+p[1]-1,+p[2])}
@@ -453,7 +454,7 @@ function reparto(filas,total){
   var h='<div class="barra" role="img" aria-label="Reparto">';
   filas.forEach(function(f){if(f[1])h+='<span style="flex:'+f[1]+';background:'+f[2]+'"></span>'});
   h+='</div><div class="leyenda">';
-  filas.forEach(function(f){h+='<div><i style="background:'+f[2]+'"></i>'+esc(f[0])+'<span class="n">'+(f[3]||num(f[1]))+'</span><span class="p">'+pct(f[1],total)+' %</span></div>'});
+  filas.forEach(function(f){h+='<div><i style="background:'+f[2]+'"></i>'+esc(f[0])+'<span class="n">'+(f[3]||num(f[1]))+'</span><span class="p">'+pct1(f[1],total)+'</span></div>'});
   return h+'</div>';
 }
 
@@ -657,77 +658,82 @@ PEST.apps.despues=function(){
     K.cli.map(function(c){return{nombre:c.nombre,m:c.m,pc:tot?c.m/tot*100:0,c:c.c,n:c.n,media:c.n?c.m/c.n:0}}),{orden:{k:"m",dir:-1},nombre:"aplicaciones"});
 };
 
+/* datos del contrato para todo el workspace, sin filtros */
+function contrato(){
+  var o={comp:D.cfg.compromiso_anual,licMes:0};
+  D.personas.forEach(function(p){if(p.miembro)o.licMes+=precioDe(p)});
+  if(!o.comp)return o;
+  o.ini=D.cfg.contrato_inicio||(D.dias.length?D.dias[0]:D.hoy);o.fin=masDias(o.ini,364);
+  o.empezado=o.ini<=D.hoy;o.pasados=o.empezado?Math.max(1,Math.min(365,difDias(D.hoy,o.ini)+1)):0;
+  var per=D.hoy.slice(0,8)+o.ini.slice(8);if(per>D.hoy)per=masMeses(per,-1);if(per<o.ini)per=o.ini;o.per=per;
+  o.uso=0;o.usoPer=0;
+  D.uso.forEach(function(r){var f=D.dias[r[0]];if(f<o.ini||f>o.fin)return;var g=gasto(r)||0;o.uso+=g;if(f>=per)o.usoPer+=g});
+  o.licDev=o.licMes*12*o.pasados/365;o.gastado=o.licDev+o.uso;
+  o.licAnual=o.licMes*12;o.usoPrev=o.pasados?o.uso/o.pasados*365:0;o.prev=o.licAnual+o.usoPrev;o.dif=o.comp-o.prev;
+  o.margenAnual=Math.max(0,o.comp-o.licAnual);o.margenMes=o.margenAnual/12;
+  return o;
+}
 PEST.consumo=function(){
-  var k=K,T=k.T,h='<section class="kpis">';
-  var ent=T.ti+T.tc;
-  if(T.g!=null)h+=cifra({rot:"Consumo de uso",val:dinero(T.g,2),desc:"facturado por uso en el periodo",tono:"oro",comp:comparar(T.g,k.prev&&k.prev.g,true),ayuda:"Importe que OpenAI factura por los tokens consumidos."});
-  h+=cifra({rot:"Tokens procesados",val:compacto(T.tt),desc:"la unidad en que se mide y se factura el texto",comp:comparar(T.tt,k.prev&&k.prev.tt),ayuda:"Un token equivale más o menos a tres cuartos de palabra."});
-  h+=cifra({rot:"Texto enviado",val:compacto(ent),desc:"tokens de entrada: preguntas, adjuntos y contexto",comp:ent?"<b>"+pct(T.tc,ent)+" %</b> reutilizado de caché, más barato":"",ayuda:"Lo que se envía al modelo en cada consulta."});
-  h+=cifra({rot:"Texto generado",val:compacto(T.to),desc:"tokens de salida: lo que responde ChatGPT",comp:"<b>"+pct(T.to,T.tt)+" %</b> del total; es la parte más cara",ayuda:"Lo que el modelo escribe como respuesta."});
-  h+=cifra({rot:"Tamaño de un mensaje",val:T.m?compacto(T.tt/T.m):"—",desc:"tokens de media por mensaje",comp:T.g!=null&&T.m?"cuesta unos <b>"+dinero(T.g/T.m,3)+"</b> de media":"",ayuda:"Tokens totales entre mensajes enviados."});
-  if(T.g==null&&T.cr!=null)h+=cifra({rot:"Créditos consumidos",val:compacto(T.cr),desc:"en el periodo"});
-  h+='</section><section class="fila">';
-  h+=tarjeta("Composición de los tokens","Entrada nueva, entrada en caché y salida.",reparto([["Entrada nueva",T.ti,"var(--azul)",compacto(T.ti)],["Entrada en caché",T.tc,"var(--verde)",compacto(T.tc)],["Salida",T.to,"var(--oro2)",compacto(T.to)]],T.ti+T.tc+T.to));
-  /* coste de puestos */
-  var c="";
+  var k=K,T=k.T,C=contrato(),h="",t=k.miembros.length;
+  /* 1. contrato */
+  if(C.comp){
+    var pocos=C.pasados<30?" Con solo "+C.pasados+" días de contrato, la previsión es orientativa.":"";
+    h+=bloque("¿Cómo va el contrato con OpenAI?","Del "+fechaLarga(C.ini)+" al "+fechaLarga(C.fin)+" · día "+C.pasados+" de 365 · todo el workspace",
+      cifra({rot:"Compromiso anual",val:dinero(C.comp),desc:"gasto mínimo acordado para 12 meses, entre licencias y uso",tono:"oro",ayuda:"Importe del contrato. Si se gasta menos, la diferencia se paga igualmente al final."})+
+      cifra({rot:"Gastado hasta hoy",val:dinero(C.gastado,2),desc:dinero(C.licDev,2)+" de licencias y "+dinero(C.uso,2)+" de uso",pct:C.gastado/C.comp*100,color:"var(--oro2)",comp:"<b>"+pct1(C.gastado,C.comp)+"</b> del compromiso, con el <b>"+pct1(C.pasados,365)+"</b> del año transcurrido",ayuda:"Licencias devengadas desde el inicio del contrato, estimadas con los miembros actuales, más el uso facturado."})+
+      cifra({rot:"Previsión a 12 meses",val:dinero(C.prev),desc:"lo que se gastaría si todo sigue al ritmo actual",pct:C.prev/C.comp*100,color:C.dif<0?"var(--error)":"var(--azul)",comp:"<b>"+pct(C.prev,C.comp)+" %</b> del compromiso",ayuda:"Licencias de un año completo más el uso de estos días proyectado a 365."})+
+      (C.dif>=0?cifra({rot:"Quedaría sin gastar",val:dinero(C.dif),desc:"se pagaría igualmente al terminar el contrato",tono:"aviso",comp:"Hay margen para usar más sin coste añadido",ayuda:"Compromiso menos la previsión a 12 meses."})
+              :cifra({rot:"Se pasaría del compromiso",val:dinero(-C.dif),desc:"se facturaría aparte, por encima de lo acordado",tono:"mal",comp:"Conviene revisar quién consume más",ayuda:"Previsión a 12 meses menos el compromiso."})));
+    h+=tarjeta("En qué se iría el compromiso anual","Previsión a 12 meses repartida en licencias, uso y lo que quedaría sin gastar."+pocos,
+      reparto([["Licencias (12 meses)",C.licAnual,"var(--azul)",dinero(C.licAnual)],["Uso previsto",C.usoPrev,"var(--verde)",dinero(C.usoPrev)]].concat(C.dif>=0?[["Sin gastar",C.dif,"var(--borde)",dinero(C.dif)]]:[]),Math.max(C.comp,C.prev)));
+  }else h+=tarjeta("Contrato","",vacio('Pon en <code>config.json</code> el compromiso anual (<code>"compromiso_anual"</code>) y la fecha de inicio (<code>"contrato_inicio"</code>) para ver cómo va el contrato.'));
+  /* 2. uso en dinero */
+  var uso="";
+  if(T.g!=null){
+    uso+=cifra({rot:"Consumo de uso",val:dinero(T.g,2),desc:"facturado por usar ChatGPT en el periodo, aparte de las licencias",tono:"oro",comp:comparar(T.g,k.prev&&k.prev.g,true),ayuda:"Importe que OpenAI factura por los tokens consumidos, convertido a la moneda del panel."});
+    uso+=cifra({rot:"Por persona",val:k.usan?dinero(T.g/k.usan,2):"—",desc:"de media entre las "+num(k.usan)+" personas que lo han usado",ayuda:"Consumo de uso entre personas con actividad en el periodo."});
+    uso+=cifra({rot:"Por mensaje",val:T.m?dinero(T.g/T.m,3):"—",desc:"coste medio de cada mensaje enviado",comp:num(T.m)+" mensajes en el periodo",ayuda:"Consumo de uso entre mensajes enviados."});
+    if(C.comp&&C.empezado)uso+=cifra({rot:"Margen de este mes",val:dinero(Math.max(0,C.margenMes-C.usoPer)),desc:"queda de los "+dinero(C.margenMes)+" mensuales previstos para uso",pct:C.usoPer/C.margenMes*100,color:C.usoPer>C.margenMes?"var(--error)":"var(--verde)",comp:"Gastados <b>"+dinero(C.usoPer,2)+"</b> desde el "+fechaCorta(C.per)+" ("+pct1(C.usoPer,C.margenMes)+")",ayuda:"El margen mensual es el compromiso menos las licencias de un año, dividido entre 12. El mes de facturación empieza el mismo día que el contrato."});
+  }else if(T.cr!=null)uso+=cifra({rot:"Créditos consumidos",val:compacto(T.cr),desc:"en el periodo",comp:comparar(T.cr,k.prev&&k.prev.cr,true)});
+  if(uso)h+=bloque("¿Cuánto cuesta el uso?","Del "+fechaLarga(F.desde)+" al "+fechaLarga(F.hasta)+" · "+k.n+" días"+(F.empresa?" · "+esc(F.empresa):""),uso);
+  /* 3. licencias */
   if(k.costeMes){
-    var act=k.est.activo;
-    c='<div class="leyenda" style="margin-top:0">'+
-      '<div><i style="background:var(--oro2)"></i>Coste mensual de los puestos<span class="n">'+dinero(k.costeMes)+'</span></div>'+
-      '<div><i style="background:var(--ok)"></i>Coste por persona activa<span class="n">'+(act?dinero(k.costeMes/act,2):"—")+'</span></div>'+
-      '<div><i style="background:var(--error)"></i>En puestos sin uso o parados +'+D.cfg.dias_reasignar+' d<span class="n">'+dinero(k.inmovil)+'</span></div>'+
-      '<div><i style="background:var(--azul)"></i>Puestos al año<span class="n">'+dinero(k.costeMes*12)+'</span></div>'+
-      '</div>'+
-      '<p class="ayuda" style="margin:12px 0 0">'+num(k.reasignar.length)+' puestos candidatos a reasignar ('+pct(k.inmovil,k.costeMes)+' % del coste). El detalle está en la pestaña Licencias.</p>';
-  }else c=vacio('Pon el precio mensual por puesto en <code>config.json</code> (<code>"precio_puesto": {"chatgpt": 38}</code>) y reinicia el servicio para ver los costes.');
-  h+=tarjeta("Coste de los puestos","Precio por puesto de la configuración × miembros actuales.",c);
-  /* contrato: compromiso anual, margen para consumo y periodo de facturación */
-  var todosMes=0;D.personas.forEach(function(p){if(p.miembro)todosMes+=precioDe(p)});
-  var comp=D.cfg.compromiso_anual,bolsa=comp?Math.max(0,comp-todosMes*12):D.cfg.bolsa_anual,b="",extra="";
-  if(!bolsa)b=vacio('Pon en <code>config.json</code> el compromiso anual del contrato (<code>"compromiso_anual"</code>) para ver su seguimiento.');
-  else{
-    var ini=D.cfg.contrato_inicio||(D.dias.length?D.dias[0]:D.hoy),previo=ini>D.hoy;
-    var fin=masDias(ini,364),usado=null,cred=null,usadoMes=null,usadoTodo=null,cuota=bolsa/12;
-    /* periodo de facturación en curso: empieza el mismo día del mes que el contrato */
-    var per=D.hoy.slice(0,8)+ini.slice(8);if(per>D.hoy){var a=new Date(aUTC(D.hoy.slice(0,8)+"01"));a.setUTCMonth(a.getUTCMonth()-1);per=a.toISOString().slice(0,8)+ini.slice(8)}
-    if(per<ini)per=ini;
-    D.uso.forEach(function(r){var f=D.dias[r[0]];if(f<ini||f>fin)return;var g=gasto(r);usadoTodo=suma(usadoTodo,g);
-      if(F.empresa&&D.personas[r[1]].empresa!==F.empresa)return;
-      usado=suma(usado,g);cred=suma(cred,r[8]);if(f>=per)usadoMes=suma(usadoMes,g)});
-    var pasados=previo?0:Math.max(1,Math.min(365,difDias(D.hoy,ini)+1)),u=usado||0,um=usadoMes||0;
-    var proy=pasados?u/pasados*365:0,p=Math.min(100,u/bolsa*100),mal=proy>bolsa;
-    b='<div class="barra"><span style="flex:'+p+';background:'+(mal?"var(--error)":"var(--ok)")+'"></span><span style="flex:'+(100-p)+';background:transparent;min-width:0"></span></div>'+
-      '<div class="leyenda"><div><i style="background:var(--oro2)"></i>Consumido desde el '+fechaCorta(ini)+'<span class="n">'+dinero(u,2)+'</span><span class="p">'+dec(u/bolsa*100)+' %</span></div>'+
-      '<div><i style="background:var(--verde)"></i>Disponible<span class="n">'+dinero(Math.max(0,bolsa-u))+'</span><span class="p">'+dec(Math.max(0,100-u/bolsa*100))+' %</span></div>'+
-      '<div><i style="background:var(--borde)"></i>Margen anual para consumo<span class="n">'+dinero(bolsa)+'</span><span class="p"></span></div>'+
-      '<div><i style="background:var(--azul)"></i>Equivalente mensual<span class="n">'+dinero(cuota)+'</span><span class="p"></span></div>'+
-      '<div><i style="background:'+(um>cuota?"var(--error)":"var(--lila)")+'"></i>Periodo en curso (desde el '+fechaCorta(per)+')<span class="n">'+dinero(um,2)+'</span><span class="p">'+pct(um,cuota)+' %</span></div>'+
-      '<div><i style="background:'+(mal?"var(--error)":"var(--ok)")+'"></i>Proyección a 12 meses<span class="n">'+dinero(proy)+'</span><span class="p">'+pct(proy,bolsa)+' %</span></div></div>'+
-      '<p class="ayuda" style="margin:12px 0 0">'+(previo?"El contrato aún no ha empezado.":num(pasados)+" días de contrato transcurridos"+(pasados<30?"; la proyección es poco fiable con tan pocos días":"")+".")+(usado==null&&cred!=null?" La API informa "+num(cred)+" créditos sin importe.":"")+(F.empresa?" Solo la empresa filtrada, frente al margen de todo el workspace.":"")+'</p>';
-    if(comp){
-      var puestosDev=todosMes*12*pasados/365,ut=usadoTodo||0,imput=puestosDev+ut,proyT=todosMes*12+(pasados?ut/pasados*365:0),dif=comp-proyT,pc=Math.min(100,imput/comp*100);
-      extra=tarjeta("Compromiso del contrato","Gasto mínimo comprometido en 12 meses: puestos más consumo. Todo el workspace.",
-        '<div class="barra"><span style="flex:'+pc+';background:var(--oro2)"></span><span style="flex:'+(100-pc)+';background:transparent;min-width:0"></span></div>'+
-        '<div class="leyenda"><div><i style="background:var(--borde)"></i>Compromiso anual<span class="n">'+dinero(comp)+'</span><span class="p"></span></div>'+
-        '<div><i style="background:var(--azul)"></i>Puestos devengados<span class="n">'+dinero(puestosDev,2)+'</span><span class="p">'+dec(puestosDev/comp*100)+' %</span></div>'+
-        '<div><i style="background:var(--verde)"></i>Consumo de uso<span class="n">'+dinero(ut,2)+'</span><span class="p">'+dec(ut/comp*100)+' %</span></div>'+
-        '<div><i style="background:var(--oro2)"></i>Imputado hasta hoy<span class="n">'+dinero(imput,2)+'</span><span class="p">'+dec(imput/comp*100)+' %</span></div>'+
-        '<div><i style="background:var(--lila)"></i>Proyección a 12 meses<span class="n">'+dinero(proyT)+'</span><span class="p">'+pct(proyT,comp)+' %</span></div>'+
-        '<div><i style="background:'+(dif>0?"var(--aviso)":"var(--error)")+'"></i>'+(dif>0?"Quedaría sin consumir":"Exceso sobre el compromiso")+'<span class="n">'+dinero(Math.abs(dif))+'</span><span class="p">'+pct(Math.abs(dif),comp)+' %</span></div></div>'+
-        '<p class="ayuda" style="margin:12px 0 0">Contrato del '+fechaLarga(ini)+' al '+fechaLarga(fin)+'. '+(dif>0?"Lo que no se consuma se factura igualmente al final del periodo.":"Lo que supere el compromiso se factura aparte.")+' Los puestos se estiman con los miembros actuales.</p>');
-    }
-  }
-  h+=tarjeta(comp?"Margen para consumo":"Bolsa de consumo anual",comp?"Compromiso menos el coste anual de los puestos.":"Año de contrato en curso, independiente del periodo elegido.",b)+extra+'</section>';
-  h+=tarjeta("Tokens por día","Del "+fechaLarga(F.desde)+" al "+fechaLarga(F.hasta)+".",'<div id="g1"></div>');
-  h+=tarjeta("Mayores consumidores","Ordenado por tokens en el periodo.",'<div id="t-con"></div>',btnCsv("t-con"));
+    h+=bloque("¿Cuánto cuestan las licencias?","Con los miembros actuales"+(F.empresa?" de "+esc(F.empresa):""),
+      cifra({rot:"Licencias al mes",val:dinero(k.costeMes),desc:num(t)+" licencias × "+dinero(k.costeMes/Math.max(1,t),2),tono:"oro",ayuda:"Precio por puesto de la configuración por el número de miembros."})+
+      cifra({rot:"Licencias al año",val:dinero(k.costeMes*12),desc:"si no cambia el número de personas",comp:C.comp&&!F.empresa?"<b>"+pct(k.costeMes*12,C.comp)+" %</b> del compromiso anual":""})+
+      cifra({rot:"Por persona que lo usa",val:k.est.activo?dinero(k.costeMes/k.est.activo,2):"—",desc:"coste mensual de las licencias entre las "+num(k.est.activo)+" personas activas",ayuda:"Cuanto más se acerque al precio de una licencia, mejor aprovechadas están."})+
+      cifra({rot:"Sin aprovechar",val:dinero(k.inmovil),desc:"al mes en "+num(k.reasignar.length)+" licencias sin estrenar o paradas más de "+D.cfg.dias_reasignar+" días",tono:k.inmovil?"mal":"ok",comp:k.inmovil?"El detalle está en la pestaña Licencias":"",ayuda:"Coste mensual de las licencias candidatas a reasignar."}));
+  }else h+=tarjeta("Licencias","",vacio('Pon el precio mensual por puesto en <code>config.json</code> (<code>"precio_puesto"</code>) para ver el coste de las licencias.'));
+  /* 4. evolución y detalle */
+  h+='<section class="fila dos">'+tarjeta(T.g!=null?"Consumo de uso por día":"Tokens por día",T.g!=null?"Importe facturado cada día del periodo.":"Del "+fechaLarga(F.desde)+" al "+fechaLarga(F.hasta)+".",'<div id="g1"></div>')+
+    tarjeta("Quién consume más",T.g!=null?"Importe de uso en el periodo.":"Tokens en el periodo.",'<div id="c-top"></div>')+'</section>';
+  h+=tarjeta("Detalle por persona",T.g!=null?"Ordenado por consumo. Pulsa una fila para ver la ficha.":"Ordenado por tokens.",'<div id="t-con"></div>',btnCsv("t-con"));
+  /* 5. parte técnica: tokens */
+  var ent=T.ti+T.tc;
+  h+=bloque("¿De qué se compone el uso?","Los tokens son la unidad en que se mide y se factura el texto: uno equivale más o menos a tres cuartos de palabra",
+    cifra({rot:"Tokens procesados",val:compacto(T.tt),desc:"entre lo que se envía y lo que ChatGPT responde",comp:comparar(T.tt,k.prev&&k.prev.tt)})+
+    cifra({rot:"Texto enviado",val:compacto(ent),desc:"preguntas, adjuntos y el historial de cada conversación",comp:ent?"<b>"+pct1(T.tc,ent)+"</b> se reutiliza de caché y cuesta menos":"",ayuda:"Tokens de entrada. En cada mensaje se reenvía el contexto de la conversación, por eso es la parte más grande."})+
+    cifra({rot:"Texto generado",val:compacto(T.to),desc:"lo que ChatGPT escribe como respuesta",comp:"<b>"+pct1(T.to,T.tt)+"</b> del total, pero es la parte más cara por token",ayuda:"Tokens de salida."})+
+    cifra({rot:"Tokens por mensaje",val:T.m?compacto(T.tt/T.m):"—",desc:"de media, contando el contexto que se reenvía cada vez",ayuda:"Tokens totales entre mensajes. Sale alto cuando hay conversaciones largas, adjuntos o agentes."}));
+  h+='<section class="fila dos">'+tarjeta("Composición de los tokens","Texto enviado nuevo, texto enviado desde caché y texto generado.",reparto([["Enviado, nuevo",T.ti,"var(--azul)",compacto(T.ti)],["Enviado, de caché",T.tc,"var(--verde)",compacto(T.tc)],["Generado",T.to,"var(--oro2)",compacto(T.to)]],T.ti+T.tc+T.to))+
+    tarjeta("Tokens por día","Del "+fechaLarga(F.desde)+" al "+fechaLarga(F.hasta)+".",'<div id="g2"></div>')+'</section>';
   return h;
 };
 PEST.consumo.despues=function(){
-  barras($("g1"),etqDias(),titDias(),K.dia.map(function(x){return x.tt}),"var(--verde)","Tokens por día",function(i){var x=K.dia[i];return compacto(x.tt)+" tokens · "+num(x.m)+" mensajes"+(x.cr!=null?"<br>"+dec(x.cr)+" créditos":"")});
-  var tot=K.T.tt,filas=Object.keys(K.per).map(function(i){var p=D.personas[i],q=K.per[i];return{i:+i,nombre:p.nombre,email:p.email,empresa:p.empresa,estado:p.estado,tt:q.tt,pc:tot?q.tt/tot*100:0,ent:q.ti+q.tc,sal:q.to,m:q.m,porMsg:q.m?q.tt/q.m:null,cr:q.cr,g:q.g}});
-  var cols=[COL.persona,COL.empresa,{k:"tt",t:"Tokens",num:1,fmt:compacto},{k:"pc",t:"% del total",num:1,fmt:function(v){return dec(v)+" %"}},{k:"ent",t:"Entrada",num:1,fmt:compacto},{k:"sal",t:"Salida",num:1,fmt:compacto},COL.m,{k:"porMsg",t:"Tokens / mensaje",num:1,fmt:compacto}];
-  if(K.T.g!=null)cols.push(COL.g);else if(K.T.cr!=null)cols.push(COL.cr);
-  tabla("t-con",cols,filas,{orden:{k:"tt",dir:-1},nombre:"consumo",click:function(f){abrirFicha(f.i)}});
+  var hayG=K.T.g!=null;
+  if(hayG)barras($("g1"),etqDias(),titDias(),K.dia.map(function(x){return x.g||0}),"var(--oro2)","Consumo de uso por día",function(i){var x=K.dia[i];return dinero(x.g||0,2)+"<br>"+num(x.m)+" mensajes · "+num(x.act)+" personas"});
+  else barras($("g1"),etqDias(),titDias(),K.dia.map(function(x){return x.tt}),"var(--verde)","Tokens por día",function(i){return compacto(K.dia[i].tt)+" tokens"});
+  barras($("g2"),etqDias(),titDias(),K.dia.map(function(x){return x.tt}),"var(--verde)","Tokens por día",function(i){var x=K.dia[i];return compacto(x.tt)+" tokens · "+num(x.m)+" mensajes"});
+  var tot=K.T.tt,totG=K.T.g||0,filas=Object.keys(K.per).map(function(i){var p=D.personas[i],q=K.per[i];return{i:+i,nombre:p.nombre,email:p.email,empresa:p.empresa,estado:p.estado,tt:q.tt,pc:tot?q.tt/tot*100:0,ent:q.ti+q.tc,sal:q.to,m:q.m,porMsg:q.m?q.tt/q.m:null,cr:q.cr,g:q.g,pg:q.g!=null&&totG?q.g/totG*100:null,gm:q.g!=null&&q.m?q.g/q.m:null}});
+  var orden=filas.slice().sort(function(a,b){return hayG?(b.g||0)-(a.g||0):b.tt-a.tt});
+  $("c-top").innerHTML=listaBarras(orden.filter(function(f){return hayG?f.g:f.tt}),hayG?"g":"tt",hayG?"var(--oro2)":"var(--verde)",hayG?function(v){return dinero(v,2)}:compacto,false,8);
+  var cols=[COL.persona,COL.empresa];
+  if(hayG)cols.push(COL.g,{k:"pg",t:"% del consumo",num:1,fmt:function(v){return v==null?"—":dec(v)+" %"}});
+  cols.push(COL.m);
+  if(hayG)cols.push({k:"gm",t:"Coste por mensaje",num:1,fmt:function(v){return dinero(v,3)}});
+  cols.push({k:"tt",t:"Tokens",num:1,fmt:compacto},{k:"ent",t:"Texto enviado",num:1,fmt:compacto},{k:"sal",t:"Texto generado",num:1,fmt:compacto},{k:"porMsg",t:"Tokens por mensaje",num:1,fmt:compacto});
+  if(!hayG&&K.T.cr!=null)cols.push(COL.cr);
+  tabla("t-con",cols,filas,{orden:{k:hayG?"g":"tt",dir:-1},nombre:"consumo",click:function(f){abrirFicha(f.i)}});
 };
 
 /* periodos de facturación: mensuales desde el inicio del contrato; antes, meses naturales */
@@ -798,8 +804,7 @@ PEST.estimador=function(){
 PEST.estimador.despues=function(){
   var e=Q.est,caja=$("est-out");if(!e||!caja)return;
   var m=G.pm[e.modelo],porConsulta=e.tokens*m.precio/1e6,mes=porConsulta*e.consultas*e.personas*e.dias,tokMes=e.tokens*e.consultas*e.personas*e.dias;
-  var todosMes=0;D.personas.forEach(function(p){if(p.miembro)todosMes+=precioDe(p)});
-  var bolsa=D.cfg.compromiso_anual?Math.max(0,D.cfg.compromiso_anual-todosMes*12):D.cfg.bolsa_anual,cuota=bolsa/12;
+  var C=contrato(),cuota=C.comp?C.margenMes:(D.cfg.bolsa_anual||0)/12;
   var h='<section class="kpis">'+kpi("Coste por consulta",dinero(porConsulta,4),compacto(e.tokens)+" tokens",true)+
     kpi("Por persona y mes",dinero(mes/e.personas,2),num(e.consultas*e.dias)+" consultas")+
     kpi("Coste mensual",dinero(mes,2),compacto(tokMes)+" tokens")+kpi("Coste anual",dinero(mes*12),"12 meses al mismo ritmo")+
