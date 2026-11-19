@@ -40,7 +40,7 @@ html[data-tema=claro] .logo.claro{display:block}
 h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.3px}
 .sub{margin-top:2px;font-size:13.5px;color:var(--suave)}
 .acciones{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-#reloj-box{text-align:right;line-height:1.2;margin-right:4px}
+#reloj-box{text-align:right;line-height:1.2;margin-left:6px}
 #clock{font-size:.85rem;color:var(--texto);font-variant-numeric:tabular-nums}
 #servidor{font-size:.72rem;color:var(--suave);margin-top:2px}
 #servidor:not(:empty)::before{content:"🖥 "}
@@ -177,11 +177,11 @@ footer{font-size:12px;color:var(--tenue);text-align:center;padding-top:6px}
       </div>
     </div>
     <div class="acciones">
-      <div id="reloj-box"><div id="clock">--/--/---- --:--:--</div><div id="servidor"></div></div>
       <span class="chip demo" id="chip-demo" hidden>DATOS SIMULADOS</span>
       <span class="chip" id="chip-fecha">Cargando…</span>
       <button class="btn" id="btn-tema" type="button" aria-label="Cambiar entre tema claro y oscuro">Tema claro</button>
       <button class="btn principal" id="btn" type="button">Actualizar</button>
+      <div id="reloj-box"><div id="clock">--/--/---- --:--:--</div><div id="servidor"></div></div>
     </div>
   </header>
 
