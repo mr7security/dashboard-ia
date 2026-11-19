@@ -149,6 +149,8 @@ th button{font:inherit;color:inherit;text-transform:inherit;letter-spacing:inher
 th button:hover,th button.activo{color:var(--oro2)}
 td{padding:8px 10px;border-bottom:1px solid var(--linea);white-space:nowrap}
 td.num,th.num{text-align:right;font-family:var(--mono)}
+td.largo{white-space:normal;min-width:230px;max-width:420px;font-size:13px;line-height:1.4;color:var(--suave)}
+td .id-api{display:block;font-family:var(--mono);font-size:11.5px;color:var(--tenue)}
 td .correo{display:block;font-family:var(--mono);font-size:12px;color:var(--suave)}
 tr:last-child td{border-bottom:0}
 tr.clic{cursor:pointer}
@@ -270,10 +272,39 @@ function suma(a,v){return v==null?a:(a||0)+v}
 var NOMBRE_TIPO={chatgpt:"ChatGPT",codex:"Codex",automation:"Automation",sin_dato:"Sin dato"};
 function nombreTipo(t){return NOMBRE_TIPO[t]||t||"—"}
 var ESTADO={activo:"En uso",parado:"Parada",sin_uso:"Sin estrenar",ex:"Ya no es miembro"};
-var APP={web:"Web",desktop:"Escritorio",ios:"iPhone y iPad",android:"Android",mobile:"Móvil",api:"API",codex:"Codex",cli:"Línea de comandos",otro:"Otra",other:"Otra",unknown:"Sin identificar"};
+var PROD={
+  chat:{n:"Chat",c:"var(--azul)",que:"La conversación normal con ChatGPT: se pregunta y responde al momento.",para:"Dudas, redacción, resúmenes, traducciones y consultas del día a día."},
+  work:{n:"Work",c:"var(--oro2)",que:"Modo agente de ChatGPT: recibe un encargo y lo resuelve solo en varios pasos, navegando, ejecutando código y creando ficheros.",para:"Entregar un resultado terminado: informes, hojas de cálculo, presentaciones o análisis."},
+  codex:{n:"Codex",c:"var(--verde)",que:"El agente de programación de OpenAI.",para:"Escribir, revisar y corregir código."},
+  dots:{n:"Dots",c:"var(--lila)",que:"Asistentes personales que siguen trabajando en una tarea entre una conversación y otra.",para:"Seguimientos y tareas en segundo plano, sin tener la conversación abierta."},
+  otro:{n:"Otros",c:"var(--tenue)",que:"Uso que la API no clasifica en ningún producto conocido.",para:"—"}
+};
+/* id de la API -> [nombre, producto, dónde se usa] */
+var APP={
+  CHAT_WEB:["Chat en el navegador","chat","En chatgpt.com, sin instalar nada."],
+  CHAT_DESKTOP:["Chat en el ordenador","chat","En la aplicación de ChatGPT instalada en el ordenador."],
+  CHAT_IOS:["Chat en iPhone y iPad","chat","En la aplicación de ChatGPT para iPhone y iPad."],
+  CHAT_ANDROID:["Chat en Android","chat","En la aplicación de ChatGPT para Android."],
+  CODEX_WORK_WEB:["Work en el navegador","work","En chatgpt.com; el agente trabaja en la nube."],
+  CODEX_WORK_MOBILE:["Work en el móvil","work","En la aplicación del móvil; se lanza el encargo y se recoge el resultado."],
+  CODEX_WORK_DESKTOP:["Work en el ordenador","work","En la aplicación de escritorio, donde puede trabajar con los ficheros del propio equipo."],
+  CODEX_DESKTOP_APP:["Codex en el ordenador","codex","En la aplicación de escritorio de Codex."],
+  CODEX_CLI:["Codex en la terminal","codex","Desde la línea de comandos."],
+  CODEX_IDE:["Codex en el editor de código","codex","Como extensión del editor de programación."],
+  CODEX_CLOUD:["Codex en la nube","codex","Tareas de programación lanzadas en la nube."],
+  CODEX_UNKNOWN_DEFAULT:["Codex o Work sin identificar","codex","La API no indica desde qué aplicación se hizo."],
+  DOTS:["Dots","dots","Funcionan en segundo plano, sin una aplicación abierta."]
+};
+function infoApp(v){
+  var id=String(v).toUpperCase(),a=APP[id];
+  if(a)return{id:id,nombre:a[0],prod:a[1],donde:a[2]};
+  var prod=id.indexOf("CODEX_WORK")===0?"work":id.indexOf("CODEX")===0?"codex":id.indexOf("CHAT")===0?"chat":id.indexOf("DOT")===0?"dots":"otro";
+  var limpio=id.replace(/^CODEX_WORK_|^CODEX_|^CHAT_/,"").replace(/_/g," ").toLowerCase();
+  return{id:id,nombre:(prod==="otro"?"":PROD[prod].n+" · ")+(limpio||id.toLowerCase()),prod:prod,donde:"Identificador de la API: "+id+"."};
+}
 var ROL={member:"Miembro",owner:"Propietario",admin:"Administrador",account_owner:"Propietario",standard:"Miembro"};
 function nombreRol(v){return ROL[String(v).toLowerCase()]||v||"—"}
-function nombreApp(v){return APP[String(v).toLowerCase()]||v}
+function nombreApp(v){return infoApp(v).nombre}
 function precioDe(p){return +(D.cfg.precio_puesto||{})[p.puesto]||0}
 function delta(a,b){
   if(b==null||!isFinite(b))return"";
@@ -367,15 +398,20 @@ function calcular(){
   k.modG=k.mod.some(function(m){return m.g!=null});
   k.vel=k.vel.filter(function(v){return v.tt}).sort(function(a,b){return b.tt-a.tt});
   /* aplicaciones */
-  k.cli=D.clientes.map(function(nombre,i){return{i:i,nombre:nombreApp(nombre),m:0,c:0,pers:{},dia:new Array(n).fill(0)}});
+  k.cli=D.clientes.map(function(nombre,i){var a=infoApp(nombre);return{i:i,id:a.id,nombre:a.nombre,prod:a.prod,donde:a.donde,m:0,c:0,g:null,pers:{},dia:new Array(n).fill(0)}});
   k.cliPer={};
   D.uso_clientes.forEach(function(r){
     if(r[0]<k.i0||r[0]>k.i1||!ok(r[1]))return;
     var c=k.cli[r[2]];c.m+=r[3];c.c+=r[4];c.pers[r[1]]=1;c.dia[r[0]-k.i0]+=r[3];
+    if(r[6]!=null)c.g=suma(c.g,r[6]*D.cfg.usd_a_moneda);else if(r[5]!=null&&D.cfg.precio_credito)c.g=suma(c.g,r[5]*D.cfg.precio_credito);
     var cp=k.cliPer[r[1]]||(k.cliPer[r[1]]={});cp[r[2]]=(cp[r[2]]||0)+r[3];
   });
   k.cli.forEach(function(c){c.n=Object.keys(c.pers).length});
-  k.cli=k.cli.filter(function(c){return c.m||c.c}).sort(function(a,b){return b.m-a.m});
+  k.cli=k.cli.filter(function(c){return c.m||c.c||c.g}).sort(function(a,b){return b.m-a.m});
+  /* agrupado por producto: Chat, Work, Codex, Dots */
+  k.prod={};k.cli.forEach(function(c){var p=k.prod[c.prod]||(k.prod[c.prod]={id:c.prod,nombre:PROD[c.prod].n,m:0,c:0,g:null,pers:{},dia:new Array(n).fill(0)});
+    p.m+=c.m;p.c+=c.c;p.g=suma(p.g,c.g);Object.keys(c.pers).forEach(function(x){p.pers[x]=1});c.dia.forEach(function(v,i){p.dia[i]+=v})});
+  k.prod=Object.keys(k.prod).map(function(x){var p=k.prod[x];p.n=Object.keys(p.pers).length;return p}).sort(function(a,b){return b.m-a.m});
   return k;
 }
 function filasPersonas(){
@@ -485,7 +521,7 @@ function pintarTabla(id){
   h+='</tr></thead><tbody>';
   filas.forEach(function(f,i){
     h+='<tr'+(st.click?' class="clic" tabindex="0" data-tabla="'+id+'" data-i="'+i+'"':'')+'>';
-    st.cols.forEach(function(c){h+='<td'+(c.num?' class="num"':'')+'>'+(c.html?c.html(f):esc(c.fmt?c.fmt(f[c.k]):f[c.k]==null?"—":f[c.k]))+'</td>'});
+    st.cols.forEach(function(c){h+='<td'+(c.num?' class="num"':c.largo?' class="largo"':'')+'>'+(c.html?c.html(f):esc(c.fmt?c.fmt(f[c.k]):f[c.k]==null?"—":f[c.k]))+'</td>'});
     h+='</tr>';
   });
   caja.innerHTML=h+'</tbody></table></div>';
@@ -493,7 +529,7 @@ function pintarTabla(id){
 function exportar(id){
   var st=TB[id];if(!st||!st.vista)return;
   function celda(v){if(v==null)return"";if(typeof v==="number")return String(Math.round(v*100)/100).replace(".",",");v=String(v);if(/^[=+\-@\t\r]/.test(v))v="'"+v;return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
-  var cols=[];st.cols.forEach(function(c){cols.push(c);if(c===COL.persona)cols.push({k:"email",t:"Email"})});
+  var cols=[];st.cols.forEach(function(c){cols.push(c);if(c===COL.persona)cols.push({k:"email",t:"Email"});if(c.k==="nombre"&&st.nombre==="aplicaciones")cols.push({k:"id",t:"Identificador de la API"})});
   var lineas=[cols.map(function(c){return celda(c.t)}).join(";")];
   st.vista.forEach(function(f){lineas.push(cols.map(function(c){return celda(c.csv?c.csv(f):f[c.k])}).join(";"))});
   var a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["﻿"+lineas.join("\r\n")],{type:"text/csv;charset=utf-8"}));
@@ -665,23 +701,30 @@ function quienModelo(){
 
 PEST.apps=function(){
   if(!K.cli.length)return vacio("La API no ha devuelto uso por aplicación en este periodo.");
-  var tot=K.cli.reduce(function(a,c){return a+c.m},0);
-  var A=K.cli,masM=A[0],masP=A.slice().sort(function(a,b){return b.n-a.n})[0];
-  var h=bloque("¿Desde dónde se usa ChatGPT?","Navegador, programa de escritorio o móvil · periodo del "+fechaLarga(F.desde)+" al "+fechaLarga(F.hasta),
-    cifra({rot:"Aplicaciones distintas",val:num(A.length),desc:"desde las que se ha usado ChatGPT",tono:"oro"})+
-    cifra({rot:"La más usada",val:esc(masM.nombre),texto:1,desc:num(masM.m)+" mensajes en el periodo",comp:"<b>"+pct1(masM.m,tot)+"</b> de todos los mensajes"})+
-    cifra({rot:"La más extendida",val:esc(masP.nombre),texto:1,desc:"la usan "+num(masP.n)+" personas",comp:K.usan?"<b>"+pct(masP.n,K.usan)+" %</b> de quienes usan ChatGPT":""}));
-  return h+'<section class="fila dos">'+tarjeta("Mensajes por aplicación","Cuánto se usa cada una.",reparto(K.cli.map(function(c,i){return[c.nombre,c.m,PALETA[i%PALETA.length]]}),tot))+
-    tarjeta("Personas por aplicación","Cuánta gente usa cada una; una persona puede usar varias.",listaBarras(K.cli.slice().sort(function(a,b){return b.n-a.n}),"n","var(--azul)",num,false))+'</section>'+
-    tarjeta("Evolución por aplicación","Mensajes por día.",'<div id="g1"></div>')+
-    tarjeta("Detalle por aplicación","Una conversación puede tener muchos mensajes.",'<div id="t-cli"></div>',btnCsv("t-cli"));
+  var tot=K.cli.reduce(function(a,c){return a+c.m},0),totG=K.cli.reduce(function(a,c){return a+(c.g||0)},0),hayG=K.cli.some(function(c){return c.g!=null});
+  /* 1. para qué: productos */
+  var h=bloque("¿Para qué se usa ChatGPT?","Cada mensaje pertenece a uno de estos productos · periodo del "+fechaLarga(F.desde)+" al "+fechaLarga(F.hasta),
+    K.prod.map(function(p){var P=PROD[p.id];return cifra({rot:P.n,val:pct1(p.m,tot),desc:P.que,pct:tot?p.m/tot*100:0,color:P.c,comp:"<b>"+num(p.m)+"</b> mensajes de <b>"+num(p.n)+"</b> personas"+(p.g!=null?" · <b>"+dinero(p.g,2)+"</b>":""),ayuda:"Se usa para: "+P.para})}).join(""));
+  h+=tarjeta("Qué es cada producto","Los nombres que da la API empiezan por CHAT_, CODEX_WORK_ o CODEX_ según el producto; lo que sigue indica desde dónde se usa.",
+    '<div class="tabla"><table><thead><tr><th>Producto</th><th>Qué es</th><th>Para qué se usa</th></tr></thead><tbody>'+
+    ["chat","work","codex","dots"].map(function(x){var P=PROD[x];return '<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:8px;background:'+P.c+'"></span><b>'+P.n+'</b></td><td class="largo">'+P.que+'</td><td class="largo">'+P.para+'</td></tr>'}).join("")+'</tbody></table></div>');
+  /* 2. desde dónde: aplicaciones */
+  h+='<section class="fila dos">'+tarjeta("Mensajes por aplicación","Producto y lugar desde el que se usa.",listaBarras(K.cli,"m","var(--oro2)",num,false,12))+
+    (hayG?tarjeta("Consumo por aplicación","Importe facturado por el uso hecho desde cada una.",listaBarras(K.cli.filter(function(c){return c.g}).sort(function(a,b){return b.g-a.g}),"g","var(--verde)",function(v){return dinero(v,2)},false,12))
+         :tarjeta("Personas por aplicación","Cuánta gente usa cada una; una persona puede usar varias.",listaBarras(K.cli.slice().sort(function(a,b){return b.n-a.n}),"n","var(--azul)",num,false,12)))+'</section>';
+  h+=tarjeta("Evolución por producto","Mensajes por día de Chat, Work, Codex y Dots.",'<div id="g1"></div>');
+  h+=tarjeta("Detalle por aplicación","Qué es cada identificador de la API, cuánto se usa y cuánto cuesta. Una conversación puede tener muchos mensajes.",'<div id="t-cli"></div>',btnCsv("t-cli"));
+  return h;
 };
 PEST.apps.despues=function(){
   if(!K.cli.length)return;
-  var tot=K.cli.reduce(function(a,c){return a+c.m},0);
-  lineas($("g1"),etqDias(),titDias(),K.cli.slice(0,6).map(function(c,i){return{n:c.nombre,c:PALETA[i],v:c.dia}}),"Mensajes por día y aplicación");
-  tabla("t-cli",[{k:"nombre",t:"Aplicación"},{k:"m",t:"Mensajes",num:1,fmt:num},{k:"pc",t:"% del total",num:1,fmt:function(v){return dec(v)+" %"}},{k:"c",t:"Conversaciones",num:1,fmt:num},{k:"n",t:"Personas",num:1,fmt:num},{k:"media",t:"Mensajes por persona",num:1,fmt:dec}],
-    K.cli.map(function(c){return{nombre:c.nombre,m:c.m,pc:tot?c.m/tot*100:0,c:c.c,n:c.n,media:c.n?c.m/c.n:0}}),{orden:{k:"m",dir:-1},nombre:"aplicaciones"});
+  var tot=K.cli.reduce(function(a,c){return a+c.m},0),hayG=K.cli.some(function(c){return c.g!=null});
+  lineas($("g1"),etqDias(),titDias(),K.prod.map(function(p){return{n:p.nombre,c:PROD[p.id].c,v:p.dia}}),"Mensajes por día y producto");
+  var cols=[{k:"nombre",t:"Aplicación",html:function(f){return esc(f.nombre)+'<span class="id-api">'+esc(f.id)+'</span>'}},
+    {k:"producto",t:"Producto"},{k:"donde",t:"Dónde se usa",largo:1},
+    {k:"m",t:"Mensajes",num:1,fmt:num},{k:"pc",t:"% de los mensajes",num:1,fmt:function(v){return dec(v)+" %"}},{k:"c",t:"Conversaciones",num:1,fmt:num},{k:"n",t:"Personas",num:1,fmt:num}];
+  if(hayG)cols.push({k:"g",t:"Consumo de uso",num:1,fmt:function(v){return dinero(v,2)}},{k:"gm",t:"Coste por mensaje",num:1,fmt:function(v){return dinero(v,3)}});
+  tabla("t-cli",cols,K.cli.map(function(c){return{nombre:c.nombre,id:c.id,producto:PROD[c.prod].n,donde:c.donde,m:c.m,pc:tot?c.m/tot*100:0,c:c.c,n:c.n,g:c.g,gm:c.g!=null&&c.m?c.g/c.m:null}}),{orden:{k:"m",dir:-1},nombre:"aplicaciones"});
 };
 
 /* datos del contrato para todo el workspace, sin filtros */
