@@ -388,7 +388,7 @@ function calcular(){
   k.miembros.forEach(function(p){k.est[p.estado]++;var pr=precioDe(p);k.costeMes+=pr;if(p.estado==="sin_uso"||p.inactivo>D.cfg.dias_reasignar){k.inmovil+=pr;k.reasignar.push(p)}});
   k.usan=Object.keys(k.per).length;
   k.usanMiembros=Object.keys(k.per).filter(function(p){return P[p].miembro}).length;
-  k.ex=P.filter(function(p){return !p.miembro&&ok(p.i)&&G.total[p.i]>0});
+  k.ex=P.filter(function(p){return !p.miembro&&ok(p.i)&&(G.total[p.i]>0||p.baja)});
   /* modelos y velocidades */
   k.mod=D.modelos.map(function(nombre,i){return{i:i,nombre:nombre,tt:0,cr:null,g:null,pers:{},persG:{},dia:new Array(n).fill(0)}});
   k.vel=D.velocidades.map(function(nombre){return{nombre:nombre,tt:0}});
@@ -655,8 +655,8 @@ PEST.empresas.despues=function(){
 
 /* Personas: dos subpestañas, quienes tienen licencia y quienes ya no la tienen */
 function personasEx(){
-  /* todas las que ya no son miembros y tienen algún uso guardado, usen o no en el periodo */
-  return K.ex.map(function(p){var q=K.per[p.i]||{};return{i:p.i,nombre:p.nombre,email:p.email,empresa:p.empresa,estado:"ex",m:q.m||0,c:q.c||0,tt:q.tt||0,g:q.g==null?null:q.g,cr:q.cr==null?null:q.cr,dias:q.dias||0,total:G.total[p.i],ultima:p.ultima,inactivo:p.inactivo,primera:G.primera[p.i]>=0?D.dias[G.primera[p.i]]:null}});
+  /* todas las que ya no son miembros: con uso guardado o con la baja detectada por el panel */
+  return K.ex.map(function(p){var q=K.per[p.i]||{};return{i:p.i,nombre:p.nombre,email:p.email,empresa:p.empresa,estado:"ex",m:q.m||0,c:q.c||0,tt:q.tt||0,g:q.g==null?null:q.g,cr:q.cr==null?null:q.cr,dias:q.dias||0,total:G.total[p.i],baja:p.baja||null,ultima:p.ultima,inactivo:p.inactivo,primera:G.primera[p.i]>=0?D.dias[G.primera[p.i]]:null}});
 }
 PEST.personas=function(){
   var roles={};D.personas.forEach(function(p){if(p.miembro&&p.rol)roles[p.rol]=1});
@@ -667,7 +667,7 @@ PEST.personas=function(){
   var herr='<input type="search" id="q-buscar" placeholder="Buscar nombre o email…" aria-label="Buscar" value="'+esc(Q.buscar)+'">'+
     (ex?"":'<select id="q-estado" aria-label="Estado"><option value="">Todos los estados</option>'+["activo","parado","sin_uso"].map(function(e){return '<option value="'+e+'"'+(Q.estado===e?" selected":"")+'>'+ESTADO[e]+'</option>'}).join("")+'</select>'+
     '<select id="q-rol" aria-label="Rol"><option value="">Todos los roles</option>'+Object.keys(roles).sort().map(function(r){return '<option value="'+esc(r)+'"'+(Q.rol===r?" selected":"")+'>'+esc(nombreRol(r))+'</option>'}).join("")+'</select>')+btnCsv(ex?"t-perx":"t-per");
-  var ayuda=ex?'<span id="per-n"></span> Personas que usaron ChatGPT y ya no tienen licencia en el workspace. Su uso sigue contando en los totales del periodo en que lo hicieron.':
+  var ayuda=ex?'<span id="per-n"></span> Personas que ya no tienen licencia en el workspace: las que tienen uso guardado y las que el panel ha visto salir de la lista de miembros, aunque nunca lo usaran. <b>Baja detectada</b> es el día en que el panel vio que ya no estaba; quien se eliminó antes de instalar el panel no tiene fecha.':
     '<span id="per-n"></span> Pulsa una fila para ver la ficha completa. <b>En uso</b>: ha usado ChatGPT en los últimos '+da+' días · <b>Parada</b>: lleva más de '+da+' días sin usarlo · <b>Sin estrenar</b>: nunca lo ha usado.';
   return sub+tarjeta(ex?"Ya no son miembros":"Personas con licencia",ayuda,'<div id="'+(ex?"t-perx":"t-per")+'"></div><div class="pie-tabla">Fechas en UTC, tal como las da la API. El último día puede estar incompleto.</div>',herr);
 };
@@ -677,10 +677,10 @@ PEST.personas.despues=function(){
   if(ex){
     var todasEx=personasEx(),listaEx=todasEx.filter(busca);
     $("per-n").textContent=(listaEx.length===todasEx.length?todasEx.length+" personas.":listaEx.length+" de "+todasEx.length+" personas.");
-    var ce=[COL.persona,COL.empresa,{k:"primera",t:"Primer uso",num:1,fmt:function(v){return v?fechaLarga(v):"—"}},{k:"ultima",t:"Último uso",num:1,fmt:function(v){return v?fechaLarga(v):"—"}},
+    var ce=[COL.persona,COL.empresa,{k:"baja",t:"Baja detectada",num:1,fmt:function(v){return v?fechaLarga(v):"—"}},{k:"primera",t:"Primer uso",num:1,fmt:function(v){return v?fechaLarga(v):"—"}},{k:"ultima",t:"Último uso",num:1,fmt:function(v){return v?fechaLarga(v):"—"}},
       {k:"total",t:"Mensajes en total",num:1,fmt:num},{k:"m",t:"Mensajes en el periodo",num:1,fmt:num},COL.dias];
     if(dinero2)ce.push(dinero2);ce.push(COL.tt);
-    tabla("t-perx",ce,listaEx,{orden:{k:"ultima",dir:-1},nombre:"ya-no-son-miembros",vacio:"No hay personas con uso guardado que ya no tengan licencia.",click:function(f){abrirFicha(f.i)}});
+    tabla("t-perx",ce,listaEx,{orden:{k:"ultima",dir:-1},nombre:"ya-no-son-miembros",vacio:"No hay personas que hayan dejado de ser miembros.",click:function(f){abrirFicha(f.i)}});
     return;
   }
   var todas=filasPersonas().filter(function(f){return f.estado!=="ex"});
