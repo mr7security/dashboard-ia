@@ -170,7 +170,7 @@ tr.clic:hover td{background:var(--panel2)}
 .mini i{display:block;height:100%;background:var(--ok)}
 .pie-tabla{margin-top:10px;font-size:12.5px;color:var(--suave)}
 
-dialog{width:min(980px,calc(100vw - 24px));max-height:calc(100vh - 24px);background:var(--fondo);color:var(--texto);border:1px solid var(--oro);border-radius:10px;padding:18px;overflow:auto}
+dialog{width:min(980px,calc((100vw - 24px)/var(--z,1)));max-height:calc((100vh - 24px)/var(--z,1));background:var(--fondo);color:var(--texto);border:1px solid var(--oro);border-radius:10px;padding:18px;overflow:auto}
 dialog::backdrop{background:rgba(5,9,18,.72)}
 .ficha-cab{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;margin-bottom:14px}
 .ficha-cab h2{font-size:19px}
@@ -251,6 +251,8 @@ footer{font-size:12px;color:var(--tenue);text-align:center;padding-top:6px}
 <script>
 (function(){
 "use strict";
+var Z=1; /* ampliación en pantallas grandes */
+
 var D=null,F={desde:null,hasta:null,empresa:""},TAB="resumen",K=null,G=null,TB={},Q={buscar:"",estado:"",rol:"",sub:"miembros",modelo:null,periodo:null,est:null};
 var $=function(id){return document.getElementById(id)};
 var PALETA=["var(--oro2)","var(--azul)","var(--verde)","var(--lila)","var(--rosa)","var(--aviso)","var(--tenue)"];
@@ -449,7 +451,7 @@ function etiquetasX(L,etq,xDe){
 function conGlobo(L,n,xDe,html){
   var svg=L.g.querySelector("svg"),guia=svg.querySelector(".guia");
   function mover(e){
-    var r=svg.getBoundingClientRect(),x=(e.touches?e.touches[0].clientX:e.clientX)-r.left,iw=L.w-L.m.i-L.m.d;
+    var r=svg.getBoundingClientRect(),x=((e.touches?e.touches[0].clientX:e.clientX)-r.left)/Z,iw=L.w-L.m.i-L.m.d;
     var i=xDe.centro?Math.floor((x-L.m.i)/(iw/n)):Math.round((x-L.m.i)/(n>1?iw/(n-1):1));
     i=Math.max(0,Math.min(n-1,i));var px=xDe(i);
     L.globo.innerHTML=html(i);L.globo.style.display="block";
@@ -1186,10 +1188,17 @@ try{if(localStorage.getItem("dash-ia-tema")==="claro")tema("claro")}catch(e){}
 /* mismo formato que el resto de dashboards de SGP */
 var DIAS_SEMANA=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"],MESES_ES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 function fmtReloj(d){var p=function(n){return String(n).padStart(2,"0")};return DIAS_SEMANA[d.getDay()]+", "+d.getDate()+" de "+MESES_ES[d.getMonth()]+" de "+d.getFullYear()+", "+p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds())}
+/* En monitores grandes se amplía todo el panel en vez de dejar los laterales vacíos.
+   Se mira el ancho y el alto para que en un ultrapanorámico no quede demasiado grande. */
+function escalar(){
+  var z=Math.min(innerWidth/1520,innerHeight/850,2);z=z<1.08?1:Math.round(z*100)/100;
+  if(z===Z)return;Z=z;document.body.style.zoom=z===1?"":z;document.documentElement.style.setProperty("--z",z);
+}
+escalar();
 function reloj(){$("clock").textContent=fmtReloj(new Date())}
 reloj();setInterval(reloj,1000);
 var h0=(location.hash||"").slice(1);if(PEST[h0])TAB=h0;
-var tr;window.addEventListener("resize",function(){clearTimeout(tr);tr=setTimeout(function(){if(D&&!$("ficha").open)pintarTab()},180)});
+var tr;window.addEventListener("resize",function(){clearTimeout(tr);tr=setTimeout(function(){escalar();if(D&&!$("ficha").open)pintarTab()},180)});
 pintarTab();cargar();setInterval(function(){if(!$("ficha").open)cargar()},5*60*1000);
 })();
 </script>
