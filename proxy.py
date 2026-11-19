@@ -500,14 +500,32 @@ def regla_limite(r):
         regla = regla_limite(r["limit"]) or {"tipo": "", "importe": None, "unidad": None, "expira": None}
         regla["origen"] = str((r.get("source") or {}).get("kind") or "")
         return regla
+    # La API da el mismo límite en créditos ("limit") y en dinero ("limit_amount").
     importe = unidad = None
+    creditos = a_numero(r.get("limit"), None) if r.get("limit") is not None else None
     cantidad = r.get("limit_amount")
     if isinstance(cantidad, dict):
         importe, unidad = a_numero(cantidad.get("amount"), None), cantidad.get("unit")
-    elif r.get("limit") is not None:
-        importe, unidad = a_numero(r.get("limit"), None), "credit"
-    return {"tipo": str(r.get("type") or ""), "importe": importe, "unidad": unidad,
-            "expira": r.get("limit_expires_at")}
+    elif creditos is not None:
+        importe, unidad = creditos, "credit"
+    regla = {"tipo": str(r.get("type") or ""), "importe": importe, "unidad": unidad,
+             "expira": r.get("limit_expires_at")}
+    if creditos is not None and unidad != "credit":
+        regla["creditos"] = creditos
+    return regla
+
+
+def gasto_del_periodo(d):
+    """Gasto del periodo -> (importe, unidad, créditos). Prefiere el importe en dinero."""
+    creditos = None
+    if d.get("current_month_usage_unit") == "credit" and d.get("current_month_usage") is not None:
+        creditos = a_numero(d.get("current_month_usage"), None)
+    cantidad = d.get("current_month_usage_amount")
+    if isinstance(cantidad, dict) and cantidad.get("amount") is not None:
+        return a_numero(cantidad.get("amount"), None), cantidad.get("unit"), creditos
+    if d.get("current_month_usage") is None:
+        return None, None, None
+    return a_numero(d.get("current_month_usage"), None), d.get("current_month_usage_unit"), creditos
 
 
 def leer_limites(clave, ws, usuarios):
@@ -519,7 +537,7 @@ def leer_limites(clave, ws, usuarios):
     except ErrorAPI as e:
         res.update(estado="sin_permiso" if e.codigo in (401, 403) else "error", mensaje=str(e))
         return res
-    for campo in ("default_monthly_usage_limit", "monthly_usage_limit", "default_usage_limit"):
+    for campo in ("default_user_monthly_usage_limit", "default_monthly_usage_limit", "monthly_usage_limit"):
         if isinstance(w, dict) and w.get(campo) is not None:
             res["general"] = regla_limite(w[campo])
             break
@@ -527,15 +545,19 @@ def leer_limites(clave, ws, usuarios):
     def una(u):
         ruta = "%s/users/%s" % (base, urllib.parse.quote(str(u.get("id")), safe=""))
         d = api_get(ruta, clave)
-        try:
-            m = api_get(ruta + "/monthly-usage", clave)
-        except ErrorAPI:
-            m = {}
+        # El gasto del periodo suele venir ya en esta respuesta; si no, se pide aparte.
+        if d.get("current_month_usage") is None and d.get("current_month_usage_amount") is None:
+            try:
+                d = dict(d, **{k: v for k, v in api_get(ruta + "/monthly-usage", clave).items()
+                               if k.startswith("current_month_usage")})
+            except ErrorAPI:
+                pass
+        usado, unidad, creditos = gasto_del_periodo(d)
         return {"email": (u.get("email") or "").strip().lower(), "id": u.get("id"),
                 "propio": regla_limite(d.get("override_monthly_usage_limit")),
                 "efectivo": regla_limite(d.get("effective_monthly_usage_limit")),
                 "heredado": regla_limite(d.get("inherited_monthly_usage_limit")),
-                "usado": a_numero(m.get("current_month_usage"), None), "unidad": m.get("current_month_usage_unit")}
+                "usado": usado, "unidad": unidad, "usado_creditos": creditos}
 
     def segura(u):
         try:
@@ -560,7 +582,8 @@ def leer_limites(clave, ws, usuarios):
         for p in res["personas"]:
             ref = p["heredado"] or (p["efectivo"] if not p["propio"] else None)
             if ref and ref.get("origen") in ("workspace_default", ""):
-                res["general"] = {k: ref.get(k) for k in ("tipo", "importe", "unidad", "expira")}
+                res["general"] = {k: ref.get(k) for k in ("tipo", "importe", "unidad", "expira", "creditos")
+                                  if k in ref}
                 break
     return res
 
@@ -578,7 +601,7 @@ def seguir_limites(limites):
         uid = str(p["id"])
         if not p["propio"]:
             continue
-        firma = json.dumps(p["propio"], sort_keys=True)
+        firma = json.dumps({k: p["propio"].get(k) for k in ("tipo", "importe", "unidad", "expira")}, sort_keys=True)
         antes = guardado.get(uid)
         if antes and antes.get("firma") == firma:
             desde = antes.get("desde")
@@ -720,7 +743,7 @@ def datos_demo(cfg):
                                            "gamma.demo": "Gamma Servicios", "delta.demo": "Delta"}),
                        usuarios, fusionar({}, registros, 730))
     def regla(importe, expira=None, origen=None):
-        r = {"tipo": "limited", "importe": importe, "unidad": "usd", "expira": expira}
+        r = {"tipo": "limited", "importe": importe, "unidad": "usd", "expira": expira, "creditos": importe * 25}
         if origen:
             r["origen"] = origen
         return r
@@ -732,7 +755,7 @@ def datos_demo(cfg):
         personas_lim.append({"email": u["email"], "id": u["id"], "propio": propio,
                              "efectivo": dict(propio, origen="individual_override") if propio else regla(50, None, "workspace_default"),
                              "heredado": regla(50, None, "workspace_default") if propio else None,
-                             "usado": usado, "unidad": "usd",
+                             "usado": usado, "unidad": "usd", "usado_creditos": round(usado * 25),
                              "desde": (date.today() - timedelta(days=(i * 3) % 19)).isoformat() if propio and i != 6 else None})
     tablas["limites"] = {
         "estado": "ok", "mensaje": "", "unidad": "usd", "general": regla(50), "personas": personas_lim, "fallos": 0,
