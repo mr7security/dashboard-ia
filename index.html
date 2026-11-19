@@ -82,6 +82,17 @@ nav.pestanas button[aria-selected=true]{color:var(--oro2);border-bottom-color:va
 .kpi .val{margin-top:7px;font-family:var(--mono);font-size:27px;font-weight:600;line-height:1.05;white-space:nowrap}
 .kpi .nota{margin-top:7px;font-size:12.5px;color:var(--suave)}
 .kpi.destacado{border-color:var(--oro)}
+.bloque{display:flex;flex-direction:column;gap:10px}
+.bloque>h3{margin:0;font-size:14px;font-weight:600;display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline}
+.bloque>h3 span{font-weight:400;font-size:12.5px;color:var(--suave)}
+.kpi.tono{border-top-width:3px}
+.kpi.tono.ok{border-top-color:var(--ok)} .kpi.tono.aviso{border-top-color:var(--aviso)} .kpi.tono.mal{border-top-color:var(--error)} .kpi.tono.oro{border-top-color:var(--oro)}
+.kpi .desc{margin-top:7px;font-size:13px;line-height:1.35}
+.kpi .comp{margin-top:7px;font-size:12px;color:var(--suave)}
+.kpi .comp b{font-family:var(--mono);font-weight:600}
+.kpi .comp .sube{color:var(--ok)} .kpi .comp .baja{color:var(--error)}
+.kpi .medidor{height:5px;border-radius:3px;background:var(--panel2);margin-top:10px;overflow:hidden}
+.kpi .medidor i{display:block;height:100%;border-radius:3px}
 .delta{font-family:var(--mono);font-size:12px;font-weight:600}
 .delta.sube{color:var(--ok)} .delta.baja{color:var(--error)} .delta.igual{color:var(--tenue)}
 
@@ -238,10 +249,11 @@ var DIA_SEM=["L","M","X","J","V","S","D"];
 
 /* ---------------------------------------------------------- utilidades */
 function esc(v){return String(v==null?"":v).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
-var nf=new Intl.NumberFormat("es-ES"),nf1=new Intl.NumberFormat("es-ES",{maximumFractionDigits:1}),nfc=new Intl.NumberFormat("es-ES",{notation:"compact",maximumFractionDigits:1});
+var nf;try{nf=new Intl.NumberFormat("es-ES",{useGrouping:"always",maximumFractionDigits:0})}catch(e){nf=new Intl.NumberFormat("es-ES")}
+var nf1=new Intl.NumberFormat("es-ES",{maximumFractionDigits:1}),nfc=new Intl.NumberFormat("es-ES",{notation:"compact",maximumFractionDigits:1});
 function num(v){return v==null?"—":nf.format(Math.round(v))}
 function dec(v){return v==null?"—":nf1.format(v)}
-function compacto(v){return v==null?"—":nfc.format(v)}
+function compacto(v){if(v==null)return"—";var a=Math.abs(v);if(a>=1e9)return nf.format(Math.round(v/1e6))+" M";if(a>=1e6)return nf1.format(v/1e6)+" M";if(a>=1e4)return nf1.format(v/1e3)+" mil";return nf.format(Math.round(v))}
 function pct(n,t){return t?Math.round(n/t*100):0}
 function dinero(v,d){if(v==null||!isFinite(v))return"—";var m=D.cfg.moneda||"USD";try{return new Intl.NumberFormat("es-ES",{style:"currency",currency:m,maximumFractionDigits:d||0,minimumFractionDigits:d||0}).format(v)}catch(e){return nf.format(v)+" "+m}}
 function fechaCorta(iso){if(!iso)return"—";var p=iso.split("-");return p[2]+"/"+p[1]}
@@ -313,7 +325,7 @@ function calcular(){
   k.T=nuevoTotal();k.prev=null;
   k.dia=[];for(var j=0;j<n;j++)k.dia.push({m:0,c:0,tt:0,cr:null,g:null,act:0});
   k.per={};k.emp={};
-  var pi0=k.i0-n,hayPrev=n>0&&pi0>=0,prev={m:0,tt:0,cr:null,act:{}};
+  var pi0=k.i0-n,hayPrev=n>0&&pi0>=0,prev={m:0,tt:0,cr:null,g:null,act:{}};
   var empDe=function(e){return k.emp[e]||(k.emp[e]={nombre:e,puestos:0,activos:0,parados:0,sin_uso:0,usan:0,m:0,c:0,tt:0,cr:null,g:null,coste:0})};
   P.forEach(function(p){if(!p.miembro)return;var e=empDe(p.empresa);e.puestos++;e[p.estado==="activo"?"activos":p.estado]++;e.coste+=precioDe(p)});
   D.uso.forEach(function(r){
@@ -324,10 +336,10 @@ function calcular(){
       acumula(k.T,r);
       var x=k.dia[d-k.i0];x.m+=r[2];x.c+=r[3];x.tt+=r[7];x.cr=suma(x.cr,r[8]);x.g=suma(x.g,gasto(r));x.act++;
       var q=k.per[p]||(k.per[p]=Object.assign(nuevoTotal(),{dias:0}));acumula(q,r);q.dias++;
-    }else if(hayPrev&&d>=pi0&&d<k.i0&&ok(p)){prev.m+=r[2];prev.tt+=r[7];prev.cr=suma(prev.cr,r[8]);prev.act[p]=1}
+    }else if(hayPrev&&d>=pi0&&d<k.i0&&ok(p)){prev.m+=r[2];prev.tt+=r[7];prev.cr=suma(prev.cr,r[8]);prev.g=suma(prev.g,gasto(r));prev.act[p]=1}
   });
   Object.keys(k.per).forEach(function(p){if(P[p].miembro)empDe(P[p].empresa).usan++});
-  if(hayPrev)k.prev={m:prev.m,tt:prev.tt,cr:prev.cr,act:Object.keys(prev.act).length};
+  if(hayPrev)k.prev={m:prev.m,tt:prev.tt,cr:prev.cr,g:prev.g,act:Object.keys(prev.act).length};
   k.miembros=P.filter(function(p){return p.miembro&&ok(p.i)});
   k.est={activo:0,parado:0,sin_uso:0};k.costeMes=0;k.inmovil=0;k.reasignar=[];
   k.miembros.forEach(function(p){k.est[p.estado]++;var pr=precioDe(p);k.costeMes+=pr;if(p.estado==="sin_uso"||p.inactivo>D.cfg.dias_reasignar){k.inmovil+=pr;k.reasignar.push(p)}});
@@ -496,6 +508,22 @@ var COL={
 };
 
 /* ------------------------------------------------------------- pestañas */
+/* o: {rot, val, desc, tono, pct, color, comp, ayuda} */
+function cifra(o){
+  return '<div class="tarjeta kpi'+(o.tono?" tono "+o.tono:"")+'"'+(o.ayuda?' title="'+esc(o.ayuda)+'"':'')+'><div class="rot">'+esc(o.rot)+'</div><div class="val">'+o.val+'</div>'+
+    '<div class="desc">'+o.desc+'</div>'+(o.pct!=null?'<div class="medidor"><i style="width:'+Math.max(0,Math.min(100,o.pct))+'%;background:'+(o.color||"var(--ok)")+'"></i></div>':'')+
+    (o.comp?'<div class="comp">'+o.comp+'</div>':'')+'</div>';
+}
+function comparar(a,b,inverso){
+  if(!K.prev||b==null||!isFinite(b))return"";
+  var txt="los "+K.n+" días anteriores";
+  if(!b)return a?"Sin actividad en "+txt:"";
+  var d=Math.round((a-b)/b*100);
+  if(!d)return"Igual que en "+txt;
+  var bueno=inverso?d<0:d>0;
+  return '<b class="'+(bueno?"sube":"baja")+'">'+(d>0?"▲ "+d+" % más":"▼ "+Math.abs(d)+" % menos")+'</b> que en '+txt;
+}
+function bloque(titulo,sub,tarjetas){return '<section class="bloque"><h3>'+titulo+'<span>'+sub+'</span></h3><div class="kpis">'+tarjetas+'</div></section>'}
 function kpi(rot,val,nota,destacado){return '<div class="tarjeta kpi'+(destacado?" destacado":"")+'"><div class="rot">'+esc(rot)+'</div><div class="val">'+val+'</div><div class="nota">'+nota+'</div></div>'}
 function tarjeta(titulo,ayuda,cuerpo,herr){return '<div class="tarjeta"><div class="cab"><div><h2>'+titulo+'</h2><p class="ayuda">'+ayuda+'</p></div>'+(herr?'<div class="herr">'+herr+'</div>':'')+'</div>'+cuerpo+'</div>'}
 function etqDias(){return K.fechas.map(fechaCorta)}
@@ -503,29 +531,41 @@ function titDias(){return K.fechas.map(function(f){return DIA_SEM[diaSemana(f)]+
 
 var PEST={};
 PEST.resumen=function(){
-  var k=K,t=k.miembros.length,h='<section class="kpis">';
-  h+=kpi("Puestos",num(t),Object.keys(k.emp).length+" empresas"+(F.empresa?" · filtrado":""),true);
-  h+=kpi("Activos "+D.cfg.dias_activo+" días",num(k.est.activo),pct(k.est.activo,t)+" % de los puestos");
-  h+=kpi("Usaron en el periodo",num(k.usanMiembros),pct(k.usanMiembros,t)+" % "+(k.prev?delta(k.usan,k.prev.act):""));
-  h+=kpi("Sin uso",num(k.est.sin_uso),pct(k.est.sin_uso,t)+" % · "+num(k.est.parado)+" parados");
-  h+=kpi("Mensajes",compacto(k.T.m),num(k.T.c)+" chats "+(k.prev?delta(k.T.m,k.prev.m):""));
-  h+=kpi("Tokens",compacto(k.T.tt),(k.usan?compacto(k.T.tt/k.usan)+" por persona ":"")+(k.prev?delta(k.T.tt,k.prev.tt):""));
-  if(k.T.cr!=null)h+=kpi("Créditos",compacto(k.T.cr),(k.T.g!=null?dinero(k.T.g,2)+" de consumo ":"En el periodo ")+(k.prev&&k.prev.cr!=null?delta(k.T.cr,k.prev.cr):""));
-  if(k.costeMes)h+=kpi("Coste puestos / mes",dinero(k.costeMes),k.inmovil?dinero(k.inmovil)+" en puestos sin uso":"Según config.json");
-  h+='</section>';
+  var k=K,t=k.miembros.length,da=D.cfg.dias_activo,ne=Object.keys(k.emp).length,h="";
+  var lab=0,sumaAct=0;k.fechas.forEach(function(f,i){if(diaSemana(f)<5){lab++;sumaAct+=k.dia[i].act}});
+  /* 1. ¿Se están usando las licencias? Foto de hoy, no depende del periodo */
+  h+=bloque("¿Se están usando las licencias?","Situación a día de hoy"+(F.empresa?" · "+esc(F.empresa):""),
+    cifra({rot:"Licencias asignadas",val:num(t),desc:"personas con puesto de ChatGPT"+(F.empresa?"":" en "+ne+" empresas"),tono:"oro",ayuda:"Miembros actuales del workspace."})+
+    cifra({rot:"En uso",val:num(k.est.activo),desc:"lo han usado en los últimos "+da+" días",tono:"ok",pct:pct(k.est.activo,t),comp:"<b>"+pct(k.est.activo,t)+" %</b> de las licencias",ayuda:"Personas con al menos un mensaje en los últimos "+da+" días."})+
+    cifra({rot:"Paradas",val:num(k.est.parado),desc:"llevan más de "+da+" días sin usarlo",tono:"aviso",pct:pct(k.est.parado,t),color:"var(--aviso)",comp:"<b>"+pct(k.est.parado,t)+" %</b> de las licencias",ayuda:"Lo usaron alguna vez, pero no en los últimos "+da+" días."})+
+    cifra({rot:"Sin estrenar",val:num(k.est.sin_uso),desc:"nunca han usado ChatGPT",tono:"mal",pct:pct(k.est.sin_uso,t),color:"var(--error)",comp:"<b>"+pct(k.est.sin_uso,t)+" %</b> de las licencias",ayuda:"Tienen licencia y no hay ningún uso registrado."}));
+  /* 2. ¿Cuánto se ha usado? Depende del periodo elegido */
+  h+=bloque("¿Cuánto se ha usado?","Del "+fechaLarga(F.desde)+" al "+fechaLarga(F.hasta)+" · "+k.n+" días",
+    cifra({rot:"Personas que lo han usado",val:num(k.usanMiembros),desc:"de "+num(t)+" con licencia ("+pct(k.usanMiembros,t)+" %)",comp:comparar(k.usan,k.prev&&k.prev.act),ayuda:"Personas distintas con algún mensaje dentro del periodo."})+
+    cifra({rot:"Mensajes enviados",val:compacto(k.T.m),desc:"en "+num(k.T.c)+" conversaciones",comp:comparar(k.T.m,k.prev&&k.prev.m),ayuda:"Preguntas y peticiones enviadas a ChatGPT."})+
+    cifra({rot:"Mensajes por persona",val:k.usan?num(k.T.m/k.usan):"—",desc:"de media entre quienes lo usan",comp:lab&&k.usan?"unos <b>"+dec(k.T.m/k.usan/lab)+"</b> por día laborable":"",ayuda:"Mensajes del periodo entre personas que lo han usado."})+
+    cifra({rot:"Personas al día",val:lab?dec(sumaAct/lab):"—",desc:"lo usan de media un día laborable",comp:t?"<b>"+pct(lab?sumaAct/lab:0,t)+" %</b> de las licencias":"",ayuda:"Media de personas activas en los días laborables del periodo."}));
+  /* 3. ¿Cuánto cuesta? */
+  var coste="";
+  if(k.costeMes)coste+=cifra({rot:"Licencias al mes",val:dinero(k.costeMes),desc:num(t)+" licencias × "+dinero(k.costeMes/Math.max(1,t),2),tono:"oro",ayuda:"Precio por puesto de la configuración por el número de miembros."});
+  if(k.T.g!=null)coste+=cifra({rot:"Consumo de uso",val:dinero(k.T.g,2),desc:"facturado por uso en el periodo, aparte de las licencias",comp:comparar(k.T.g,k.prev&&k.prev.g,true),ayuda:"Importe que OpenAI factura por los tokens consumidos, convertido a la moneda del panel."});
+  else if(k.T.cr!=null)coste+=cifra({rot:"Créditos consumidos",val:compacto(k.T.cr),desc:"en el periodo",comp:comparar(k.T.cr,k.prev&&k.prev.cr,true)});
+  if(k.costeMes&&k.T.g!=null&&k.usan)coste+=cifra({rot:"Coste por persona activa",val:dinero((k.costeMes*k.n/30.44+k.T.g)/k.usan,2),desc:"licencias y consumo del periodo entre quienes lo usan",ayuda:"Coste de las licencias prorrateado a los días del periodo, más el consumo, dividido entre las personas que lo han usado."});
+  if(k.costeMes)coste+=cifra({rot:"Licencias sin aprovechar",val:dinero(k.inmovil),desc:"al mes en "+num(k.reasignar.length)+" licencias sin estrenar o paradas más de "+D.cfg.dias_reasignar+" días",tono:k.inmovil?"mal":"ok",ayuda:"Coste mensual de las licencias candidatas a reasignar."});
+  if(coste)h+=bloque("¿Cuánto cuesta?","Importes en "+esc(D.cfg.moneda||"USD")+" · el detalle está en Consumo y coste y en Facturación",coste);
   /* alertas */
   var al=[];
   (D.fuente.avisos||[]).forEach(function(a){al.push(["var(--error)",esc(a)])});
-  if(k.est.sin_uso)al.push(["var(--error)","<b>"+num(k.est.sin_uso)+"</b> puestos sin ningún uso registrado."]);
+  if(k.est.sin_uso)al.push(["var(--error)","<b>"+num(k.est.sin_uso)+"</b> licencias sin estrenar: nunca han usado ChatGPT."]);
   var lejos=k.reasignar.length-k.est.sin_uso;
-  if(lejos>0)al.push(["var(--aviso)","<b>"+num(lejos)+"</b> puestos llevan más de "+D.cfg.dias_reasignar+" días sin usarse."]);
+  if(lejos>0)al.push(["var(--aviso)","<b>"+num(lejos)+"</b> licencias llevan más de "+D.cfg.dias_reasignar+" días sin usarse."]);
   if(k.ex.length)al.push(["var(--aviso)","<b>"+num(k.ex.length)+"</b> cuentas con uso registrado ya no son miembros del workspace."]);
   if(k.prev&&k.prev.m){var d=Math.round((k.T.m-k.prev.m)/k.prev.m*100);if(Math.abs(d)>=20)al.push([d>0?"var(--ok)":"var(--aviso)","Los mensajes "+(d>0?"suben":"bajan")+" un <b>"+Math.abs(d)+" %</b> frente al periodo anterior."])}
   var pico=-1;k.dia.forEach(function(x,i){if(pico<0||x.m>k.dia[pico].m)pico=i});
   if(pico>=0&&k.dia[pico].m)al.push(["var(--azul)","Día de más uso: <b>"+fechaLarga(k.fechas[pico])+"</b> con "+num(k.dia[pico].m)+" mensajes y "+num(k.dia[pico].act)+" personas."]);
-  if(k.T.cr==null&&k.T.m)al.push(["var(--tenue)","La API todavía no informa los créditos consumidos por este workspace."]);
+  if(k.T.cr==null&&k.T.g==null&&k.T.m)al.push(["var(--tenue)","La API todavía no informa el consumo facturado de este workspace."]);
   if(!al.length)al.push(["var(--ok)","Sin incidencias que destacar."]);
-  h+='<section class="fila">'+tarjeta("Adopción de los puestos","Según el último día con uso de cada miembro.",reparto([["Activos en los últimos "+D.cfg.dias_activo+" días",k.est.activo,"var(--ok)"],["Parados",k.est.parado,"var(--aviso)"],["Sin uso",k.est.sin_uso,"var(--error)"]],t));
+  h+='<section class="fila">'+tarjeta("Reparto de las licencias","Según el último día en que cada persona usó ChatGPT.",reparto([["En uso (últimos "+D.cfg.dias_activo+" días)",k.est.activo,"var(--ok)"],["Paradas",k.est.parado,"var(--aviso)"],["Sin estrenar",k.est.sin_uso,"var(--error)"]],t));
   h+=tarjeta("A destacar","Avisos calculados con los filtros actuales.",'<ul class="alertas">'+al.map(function(a){return '<li><i style="background:'+a[0]+'"></i><span>'+a[1]+'</span></li>'}).join("")+'</ul>');
   h+=tarjeta("Quién más lo usa","Mensajes en el periodo.",'<div id="r-top"></div>')+'</section>';
   h+='<section class="fila dos">'+tarjeta("Mensajes por día","Del "+fechaLarga(F.desde)+" al "+fechaLarga(F.hasta)+".",'<div id="g1"></div>')+tarjeta("Personas activas por día","Personas con uso ese día.",'<div id="g2"></div>')+'</section>';
@@ -568,7 +608,7 @@ PEST.personas.despues=function(){
   var lista=todas.filter(function(f){return(!q||(f.nombre+" "+f.email).toLowerCase().indexOf(q)>=0)&&(!Q.estado||f.estado===Q.estado)&&(!Q.rol||f.rol===Q.rol)});
   $("per-n").textContent=(lista.length===todas.length?todas.length+" personas.":lista.length+" de "+todas.length+" personas.");
   var cols=[COL.persona,COL.empresa,COL.rol,COL.puesto,COL.estado,COL.m,COL.c,COL.dias,COL.tt];
-  if(K.T.cr!=null)cols.push(COL.cr);if(K.T.g!=null)cols.push(COL.g);cols.push(COL.ultima);
+  if(K.T.g!=null)cols.push(COL.g);else if(K.T.cr!=null)cols.push(COL.cr);cols.push(COL.ultima);
   tabla("t-per",cols,lista,{orden:{k:"m",dir:-1},nombre:"personas",click:function(f){abrirFicha(f.i)}});
 };
 
@@ -619,12 +659,13 @@ PEST.apps.despues=function(){
 
 PEST.consumo=function(){
   var k=K,T=k.T,h='<section class="kpis">';
-  h+=kpi("Tokens",compacto(T.tt),"En el periodo",true);
-  h+=kpi("Entrada",compacto(T.ti+T.tc),T.ti+T.tc?pct(T.tc,T.ti+T.tc)+" % servido de caché":"—");
-  h+=kpi("Salida",compacto(T.to),pct(T.to,T.tt)+" % del total");
-  h+=kpi("Tokens / mensaje",T.m?compacto(T.tt/T.m):"—",num(T.m)+" mensajes");
-  if(T.cr!=null)h+=kpi("Créditos",compacto(T.cr),k.usan?dec(T.cr/k.usan)+" por persona":"");
-  if(T.g!=null)h+=kpi("Consumo de uso",dinero(T.g,2),k.usan?dinero(T.g/k.usan,2)+" por persona":"En el periodo");
+  var ent=T.ti+T.tc;
+  if(T.g!=null)h+=cifra({rot:"Consumo de uso",val:dinero(T.g,2),desc:"facturado por uso en el periodo",tono:"oro",comp:comparar(T.g,k.prev&&k.prev.g,true),ayuda:"Importe que OpenAI factura por los tokens consumidos."});
+  h+=cifra({rot:"Tokens procesados",val:compacto(T.tt),desc:"la unidad en que se mide y se factura el texto",comp:comparar(T.tt,k.prev&&k.prev.tt),ayuda:"Un token equivale más o menos a tres cuartos de palabra."});
+  h+=cifra({rot:"Texto enviado",val:compacto(ent),desc:"tokens de entrada: preguntas, adjuntos y contexto",comp:ent?"<b>"+pct(T.tc,ent)+" %</b> reutilizado de caché, más barato":"",ayuda:"Lo que se envía al modelo en cada consulta."});
+  h+=cifra({rot:"Texto generado",val:compacto(T.to),desc:"tokens de salida: lo que responde ChatGPT",comp:"<b>"+pct(T.to,T.tt)+" %</b> del total; es la parte más cara",ayuda:"Lo que el modelo escribe como respuesta."});
+  h+=cifra({rot:"Tamaño de un mensaje",val:T.m?compacto(T.tt/T.m):"—",desc:"tokens de media por mensaje",comp:T.g!=null&&T.m?"cuesta unos <b>"+dinero(T.g/T.m,3)+"</b> de media":"",ayuda:"Tokens totales entre mensajes enviados."});
+  if(T.g==null&&T.cr!=null)h+=cifra({rot:"Créditos consumidos",val:compacto(T.cr),desc:"en el periodo"});
   h+='</section><section class="fila">';
   h+=tarjeta("Composición de los tokens","Entrada nueva, entrada en caché y salida.",reparto([["Entrada nueva",T.ti,"var(--azul)",compacto(T.ti)],["Entrada en caché",T.tc,"var(--verde)",compacto(T.tc)],["Salida",T.to,"var(--oro2)",compacto(T.to)]],T.ti+T.tc+T.to));
   /* coste de puestos */
@@ -685,7 +726,7 @@ PEST.consumo.despues=function(){
   barras($("g1"),etqDias(),titDias(),K.dia.map(function(x){return x.tt}),"var(--verde)","Tokens por día",function(i){var x=K.dia[i];return compacto(x.tt)+" tokens · "+num(x.m)+" mensajes"+(x.cr!=null?"<br>"+dec(x.cr)+" créditos":"")});
   var tot=K.T.tt,filas=Object.keys(K.per).map(function(i){var p=D.personas[i],q=K.per[i];return{i:+i,nombre:p.nombre,email:p.email,empresa:p.empresa,estado:p.estado,tt:q.tt,pc:tot?q.tt/tot*100:0,ent:q.ti+q.tc,sal:q.to,m:q.m,porMsg:q.m?q.tt/q.m:null,cr:q.cr,g:q.g}});
   var cols=[COL.persona,COL.empresa,{k:"tt",t:"Tokens",num:1,fmt:compacto},{k:"pc",t:"% del total",num:1,fmt:function(v){return dec(v)+" %"}},{k:"ent",t:"Entrada",num:1,fmt:compacto},{k:"sal",t:"Salida",num:1,fmt:compacto},COL.m,{k:"porMsg",t:"Tokens / mensaje",num:1,fmt:compacto}];
-  if(K.T.cr!=null)cols.push(COL.cr);if(K.T.g!=null)cols.push(COL.g);
+  if(K.T.g!=null)cols.push(COL.g);else if(K.T.cr!=null)cols.push(COL.cr);
   tabla("t-con",cols,filas,{orden:{k:"tt",dir:-1},nombre:"consumo",click:function(f){abrirFicha(f.i)}});
 };
 
