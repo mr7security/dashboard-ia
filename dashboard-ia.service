@@ -1,5 +1,5 @@
 [Unit]
-Description=Dashboard de licencias OpenAI / ChatGPT (SGP)
+Description=Dashboard de ChatGPT Enterprise (SGP)
 After=network-online.target
 Wants=network-online.target
 
