@@ -70,8 +70,9 @@ input[type=search]{width:min(100%,260px)}
 input::placeholder{color:var(--tenue)}
 .nota-rango{font-size:12.5px;color:var(--suave);margin-left:auto}
 
-nav.pestanas{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--borde);-webkit-overflow-scrolling:touch}
-nav.pestanas button{font-size:14px;font-weight:500;color:var(--suave);background:none;border:0;border-bottom:2px solid transparent;padding:10px 14px;white-space:nowrap;margin-bottom:-1px}
+nav.pestanas{display:flex;gap:2px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;border-bottom:1px solid var(--borde);-webkit-overflow-scrolling:touch}
+nav.pestanas button{font-size:14px;font-weight:500;color:var(--suave);background:none;border:0;border-bottom:2px solid transparent;padding:10px 14px;white-space:nowrap}
+.pestanas::-webkit-scrollbar{display:none}
 nav.pestanas button:hover{color:var(--texto)}
 .subpestanas{display:flex;flex-wrap:wrap;gap:8px}
 .subpestanas button{font-size:13.5px;font-weight:500;color:var(--suave);background:var(--panel2);border:1px solid var(--borde);border-radius:999px;padding:7px 14px}
