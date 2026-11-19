@@ -64,6 +64,7 @@ Owner o Admin del workspace. El UUID del workspace va en `CHATGPT_WORKSPACE_ID`.
   cuando la API informa créditos pero no importe.
 - `dias_activo`: días sin uso a partir de los que un puesto pasa de activo a parado (7).
 - `dias_reasignar`: días sin uso a partir de los que un puesto es candidato a reasignar (30).
+- `nombre_servidor`: nombre que se muestra bajo el reloj. Vacío: el nombre de la máquina.
 - `empresas`: nombre de cada sociedad por dominio de correo. Sin esto se usa el propio dominio.
 - `retencion_dias`: cuánto histórico de uso se conserva (730).
 
