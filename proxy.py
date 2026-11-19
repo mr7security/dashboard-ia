@@ -545,7 +545,7 @@ def datos_demo(cfg):
 
     modelos = [("gpt-6-sol", "standard"), ("gpt-6-luna", "fast"), ("gpt-5.6-terra", "standard"),
                ("gpt-image-2", "standard"), ("codex-auto-review", "standard"), ("other", "")]
-    clientes = ["web", "desktop", "ios", "android"]
+    clientes = ["CODEX_WORK_WEB", "CHAT_WEB", "CODEX_DESKTOP_APP", "CHAT_IOS", "CODEX_WORK_DESKTOP", "DOTS"]
     registros = []
     for i, u in enumerate(usuarios + antiguos, start=1):
         baja = u["id"].startswith("user-baja")
@@ -577,8 +577,10 @@ def datos_demo(cfg):
                 "totals": {"chats": chats, "messages": mensajes, "credits": None, "cost_usd": coste1 + coste2,
                            "uncached_text_input_tokens": entrada, "cached_text_input_tokens": cache,
                            "text_output_tokens": salida, "text_total_tokens": total},
-                "clients": [{"client_id": c1, "chats": chats, "messages": parte, "credits": None},
-                            {"client_id": c2, "chats": 1, "messages": mensajes - parte, "credits": None}],
+                "clients": [{"client_id": c1, "chats": chats, "messages": parte, "credits": None,
+                             "cost_usd": coste1},
+                            {"client_id": c2, "chats": 1, "messages": mensajes - parte, "credits": None,
+                             "cost_usd": coste2}],
                 "models": [{"model": m1, "speed": v1, "credits": None, "cost_usd": coste1,
                             "uncached_text_input_tokens": entrada * 7 // 10, "cached_text_input_tokens": cache * 7 // 10,
                             "text_output_tokens": salida * 7 // 10, "text_total_tokens": total * 7 // 10},
