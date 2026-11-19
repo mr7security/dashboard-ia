@@ -14,15 +14,13 @@ id -u dashboard-ia >/dev/null 2>&1 || useradd --system --no-create-home --shell 
 mkdir -p "$DESTINO/data"
 install -m 644 "$ORIGEN/proxy.py" "$ORIGEN/index.html" "$DESTINO/"
 [[ -f "$DESTINO/config.json" ]] || install -m 644 "$ORIGEN/config.ejemplo.json" "$DESTINO/config.json"
-[[ -f "$ORIGEN/data/chatgpt_miembros.csv" && ! -f "$DESTINO/data/chatgpt_miembros.csv" ]] && \
-  install -m 640 "$ORIGEN/data/chatgpt_miembros.csv" "$DESTINO/data/"
 chown -R root:root "$DESTINO"
 chown -R dashboard-ia:dashboard-ia "$DESTINO/data"
 chmod 750 "$DESTINO/data"
 
 if [[ ! -f /etc/dashboard-ia.env ]]; then
   install -m 600 -o root -g root "$ORIGEN/dashboard-ia.env.ejemplo" /etc/dashboard-ia.env
-  echo ">> Creado /etc/dashboard-ia.env: edítalo y pon la Admin key y la contraseña."
+  echo ">> Creado /etc/dashboard-ia.env: edítalo y pon las claves y la contraseña."
 fi
 
 install -m 644 "$ORIGEN/dashboard-ia.service" /etc/systemd/system/dashboard-ia.service
@@ -30,7 +28,7 @@ systemctl daemon-reload
 systemctl enable --now dashboard-ia.service
 systemctl restart dashboard-ia.service
 
-PUERTO=$(python3 -c "import json;print(json.load(open('$DESTINO/config.json')).get('puerto',8090))")
+PUERTO=$(python3 -c "import json;print(json.load(open('$DESTINO/config.json')).get('puerto',8091))")
 echo
 echo "Instalado. Estado:   systemctl status dashboard-ia"
 echo "Registro:            journalctl -u dashboard-ia -f"
