@@ -73,6 +73,11 @@ input::placeholder{color:var(--tenue)}
 nav.pestanas{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--borde);-webkit-overflow-scrolling:touch}
 nav.pestanas button{font-size:14px;font-weight:500;color:var(--suave);background:none;border:0;border-bottom:2px solid transparent;padding:10px 14px;white-space:nowrap;margin-bottom:-1px}
 nav.pestanas button:hover{color:var(--texto)}
+.subpestanas{display:flex;flex-wrap:wrap;gap:8px}
+.subpestanas button{font-size:13.5px;font-weight:500;color:var(--suave);background:var(--panel2);border:1px solid var(--borde);border-radius:999px;padding:7px 14px}
+.subpestanas button:hover{color:var(--texto)}
+.subpestanas button span{font-family:var(--mono);font-size:12px;margin-left:6px;opacity:.85}
+.subpestanas button[aria-selected=true]{color:var(--sobre-oro);background:var(--oro);border-color:var(--oro);font-weight:600}
 nav.pestanas button[aria-selected=true]{color:var(--oro2);border-bottom-color:var(--oro);font-weight:600}
 
 .panel{display:flex;flex-direction:column;gap:14px}
@@ -246,7 +251,7 @@ footer{font-size:12px;color:var(--tenue);text-align:center;padding-top:6px}
 <script>
 (function(){
 "use strict";
-var D=null,F={desde:null,hasta:null,empresa:""},TAB="resumen",K=null,G=null,TB={},Q={buscar:"",estado:"",rol:"",modelo:null,periodo:null,est:null};
+var D=null,F={desde:null,hasta:null,empresa:""},TAB="resumen",K=null,G=null,TB={},Q={buscar:"",estado:"",rol:"",sub:"miembros",modelo:null,periodo:null,est:null};
 var $=function(id){return document.getElementById(id)};
 var PALETA=["var(--oro2)","var(--azul)","var(--verde)","var(--lila)","var(--rosa)","var(--aviso)","var(--tenue)"];
 var DIA_SEM=["L","M","X","J","V","S","D"];
@@ -648,20 +653,44 @@ PEST.empresas.despues=function(){
   tabla("t-emp",cols,lista,{orden:{k:"m",dir:-1},nombre:"empresas",click:function(f){F.empresa=F.empresa===f.nombre?"":f.nombre;$("f-empresa").value=F.empresa;todo()}});
 };
 
+/* Personas: dos subpestañas, quienes tienen licencia y quienes ya no la tienen */
+function personasEx(){
+  /* todas las que ya no son miembros y tienen algún uso guardado, usen o no en el periodo */
+  return K.ex.map(function(p){var q=K.per[p.i]||{};return{i:p.i,nombre:p.nombre,email:p.email,empresa:p.empresa,estado:"ex",m:q.m||0,c:q.c||0,tt:q.tt||0,g:q.g==null?null:q.g,cr:q.cr==null?null:q.cr,dias:q.dias||0,total:G.total[p.i],ultima:p.ultima,inactivo:p.inactivo,primera:G.primera[p.i]>=0?D.dias[G.primera[p.i]]:null}});
+}
 PEST.personas=function(){
-  var roles={};D.personas.forEach(function(p){if(p.rol)roles[p.rol]=1});
+  var roles={};D.personas.forEach(function(p){if(p.miembro&&p.rol)roles[p.rol]=1});
+  if(Q.sub!=="ex")Q.sub="miembros";
+  var ex=Q.sub==="ex",nM=K.miembros.length,nE=K.ex.length,da=D.cfg.dias_activo;
+  var sub='<nav class="subpestanas" role="tablist" aria-label="Tipo de persona"><button type="button" role="tab" data-sub="miembros" aria-selected="'+(!ex)+'">Con licencia <span>'+num(nM)+'</span></button>'+
+    '<button type="button" role="tab" data-sub="ex" aria-selected="'+ex+'">Ya no son miembros <span>'+num(nE)+'</span></button></nav>';
   var herr='<input type="search" id="q-buscar" placeholder="Buscar nombre o email…" aria-label="Buscar" value="'+esc(Q.buscar)+'">'+
-    '<select id="q-estado" aria-label="Estado"><option value="">Todos los estados</option>'+Object.keys(ESTADO).map(function(e){return '<option value="'+e+'"'+(Q.estado===e?" selected":"")+'>'+ESTADO[e]+'</option>'}).join("")+'</select>'+
-    '<select id="q-rol" aria-label="Rol"><option value="">Todos los roles</option>'+Object.keys(roles).sort().map(function(r){return '<option value="'+esc(r)+'"'+(Q.rol===r?" selected":"")+'>'+esc(nombreRol(r))+'</option>'}).join("")+'</select>'+btnCsv("t-per");
-  var da=D.cfg.dias_activo;
-  return tarjeta("Personas",'<span id="per-n"></span> Pulsa una fila para ver la ficha completa. <b>En uso</b>: ha usado ChatGPT en los últimos '+da+' días · <b>Parada</b>: lleva más de '+da+' días sin usarlo · <b>Sin estrenar</b>: nunca lo ha usado.','<div id="t-per"></div><div class="pie-tabla">Fechas en UTC, tal como las da la API. El último día puede estar incompleto.</div>',herr);
+    (ex?"":'<select id="q-estado" aria-label="Estado"><option value="">Todos los estados</option>'+["activo","parado","sin_uso"].map(function(e){return '<option value="'+e+'"'+(Q.estado===e?" selected":"")+'>'+ESTADO[e]+'</option>'}).join("")+'</select>'+
+    '<select id="q-rol" aria-label="Rol"><option value="">Todos los roles</option>'+Object.keys(roles).sort().map(function(r){return '<option value="'+esc(r)+'"'+(Q.rol===r?" selected":"")+'>'+esc(nombreRol(r))+'</option>'}).join("")+'</select>')+btnCsv("t-per");
+  var ayuda=ex?'<span id="per-n"></span> Personas que usaron ChatGPT y ya no tienen licencia en el workspace. Su uso sigue contando en los totales del periodo en que lo hicieron.':
+    '<span id="per-n"></span> Pulsa una fila para ver la ficha completa. <b>En uso</b>: ha usado ChatGPT en los últimos '+da+' días · <b>Parada</b>: lleva más de '+da+' días sin usarlo · <b>Sin estrenar</b>: nunca lo ha usado.';
+  return sub+tarjeta(ex?"Ya no son miembros":"Personas con licencia",ayuda,'<div id="t-per"></div><div class="pie-tabla">Fechas en UTC, tal como las da la API. El último día puede estar incompleto.</div>',herr);
 };
 PEST.personas.despues=function(){
-  var q=Q.buscar.trim().toLowerCase(),todas=filasPersonas();
-  var lista=todas.filter(function(f){return(!q||(f.nombre+" "+f.email).toLowerCase().indexOf(q)>=0)&&(!Q.estado||f.estado===Q.estado)&&(!Q.rol||f.rol===Q.rol)});
+  var q=Q.buscar.trim().toLowerCase(),ex=Q.sub==="ex",busca=function(f){return !q||(f.nombre+" "+f.email).toLowerCase().indexOf(q)>=0};
+  var dinero2=K.T.g!=null?COL.g:K.T.cr!=null?COL.cr:null;
+  if(ex){
+    var todasEx=personasEx(),listaEx=todasEx.filter(busca);
+    $("per-n").textContent=(listaEx.length===todasEx.length?todasEx.length+" personas.":listaEx.length+" de "+todasEx.length+" personas.");
+    var ce=[COL.persona,COL.empresa,{k:"primera",t:"Primer uso",num:1,fmt:function(v){return v?fechaLarga(v):"—"}},{k:"ultima",t:"Último uso",num:1,fmt:function(v){return v?fechaLarga(v):"—"}},
+      {k:"total",t:"Mensajes en total",num:1,fmt:num},{k:"m",t:"Mensajes en el periodo",num:1,fmt:num},COL.dias];
+    if(dinero2)ce.push(dinero2);ce.push(COL.tt);
+    tabla("t-per",ce,listaEx,{orden:{k:"ultima",dir:-1},nombre:"ya-no-son-miembros",vacio:"No hay personas con uso guardado que ya no tengan licencia.",click:function(f){abrirFicha(f.i)}});
+    return;
+  }
+  var todas=filasPersonas().filter(function(f){return f.estado!=="ex"});
+  var lista=todas.filter(function(f){return busca(f)&&(!Q.estado||f.estado===Q.estado)&&(!Q.rol||f.rol===Q.rol)});
   $("per-n").textContent=(lista.length===todas.length?todas.length+" personas.":lista.length+" de "+todas.length+" personas.");
-  var cols=[COL.persona,COL.empresa,COL.rol,COL.puesto,COL.estado,COL.m,COL.c,COL.dias];
-  if(K.T.g!=null)cols.push(COL.g);else if(K.T.cr!=null)cols.push(COL.cr);cols.push(COL.tt,COL.ultima);
+  var tipos={};todas.forEach(function(f){tipos[f.puesto]=1});
+  var cols=[COL.persona,COL.empresa,COL.rol];
+  if(Object.keys(tipos).length>1)cols.push(COL.puesto);   /* solo si hay más de un tipo de licencia */
+  cols.push(COL.estado,COL.m,COL.c,COL.dias);
+  if(dinero2)cols.push(dinero2);cols.push(COL.tt,COL.ultima);
   tabla("t-per",cols,lista,{orden:{k:"m",dir:-1},nombre:"personas",click:function(f){abrirFicha(f.i)}});
 };
 
@@ -1134,6 +1163,7 @@ document.addEventListener("click",function(e){
   var t=e.target,b;
   if((b=t.closest("button[data-k]"))){var st=TB[b.getAttribute("data-tabla")],k=b.getAttribute("data-k"),c=st.cols.filter(function(x){return x.k===k})[0];
     st.orden=st.orden&&st.orden.k===k?{k:k,dir:-st.orden.dir}:{k:k,dir:c&&c.num?-1:1};pintarTabla(b.getAttribute("data-tabla"));return}
+  if((b=t.closest("button[data-sub]"))){Q.sub=b.getAttribute("data-sub");Q.estado="";Q.rol="";pintarTab();return}
   if((b=t.closest("button[data-csv]"))){exportar(b.getAttribute("data-csv"));return}
   if(t.id==="ficha-cerrar"){cerrarFicha();return}
   if(t.id==="ficha"){cerrarFicha();return}
