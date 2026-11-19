@@ -233,6 +233,7 @@ footer{font-size:12px;color:var(--tenue);text-align:center;padding-top:6px}
     <button role="tab" data-tab="estimador">Estimador</button>
     <button role="tab" data-tab="tendencias">Tendencias</button>
     <button role="tab" data-tab="licencias">Licencias</button>
+    <button role="tab" data-tab="limites">Límites</button>
   </nav>
 
   <main id="contenido" class="panel" role="tabpanel"></main>
@@ -972,6 +973,79 @@ PEST.licencias.despues=function(){
   tabla("t-ex",[COL.persona,COL.empresa,{k:"total",t:"Mensajes totales",num:1,fmt:num},COL.m,COL.ultima],K.ex.map(function(p){var f=por[p.i]||{i:p.i,nombre:p.nombre,email:p.email,empresa:p.empresa,m:0,ultima:p.ultima,inactivo:p.inactivo};f.total=G.total[p.i];return f}),{orden:{k:"ultima",dir:-1},nombre:"ex-miembros",vacio:"No hay cuentas con uso fuera de la lista actual de miembros.",click:function(f){abrirFicha(f.i)}});
 };
 
+/* ----------------------------------------------------- límites de uso */
+var ORIGEN={individual_override:"Propio",workspace_default:"General del workspace",group_default:"De su grupo",role_based_personal_budget:"Por su rol"};
+function importeLimite(v,unidad){if(v==null)return null;return unidad==="usd"?v*D.cfg.usd_a_moneda:v}
+function txtLimite(r){
+  if(!r)return"—";if(r.tipo==="unlimited")return"Sin límite";if(r.importe==null)return"—";
+  return r.unidad==="usd"?dinero(r.importe*D.cfg.usd_a_moneda,2):num(r.importe)+" créditos";
+}
+function txtUso(v,unidad){return v==null?"—":unidad==="usd"?dinero(v*D.cfg.usd_a_moneda,2):num(v)+" créditos"}
+function filasLimites(){
+  var L=D.limites,porEmail={};D.personas.forEach(function(p){if(p.email)porEmail[p.email]=p});
+  return (L.personas||[]).map(function(x){
+    var p=porEmail[x.email]||{nombre:x.email.split("@")[0],empresa:"—",i:-1},ef=x.efectivo||x.propio,gen=x.heredado||L.general;
+    var lim=ef&&ef.tipo!=="unlimited"?importeLimite(ef.importe,ef.unidad):null,usado=importeLimite(x.usado,x.unidad);
+    var base=gen&&gen.tipo!=="unlimited"?importeLimite(gen.importe,gen.unidad):null,propio=x.propio&&x.propio.tipo!=="unlimited"?importeLimite(x.propio.importe,x.propio.unidad):null;
+    var sinLim=x.propio&&x.propio.tipo==="unlimited";
+    return{i:p.i,nombre:p.nombre,email:x.email,empresa:p.empresa,x:x,propio:x.propio,efectivo:ef,general:gen,
+      limN:ef&&ef.tipo==="unlimited"?Infinity:lim,usadoN:usado,pc:lim&&usado!=null?usado/lim*100:null,
+      origen:ef&&ef.origen?(ORIGEN[ef.origen]||ef.origen):x.propio?"Propio":"General del workspace",
+      veces:x.propio?(sinLim?Infinity:base&&propio!=null?propio/base:null):null,
+      subido:!!x.propio&&(sinLim||base==null||propio==null||propio>=base),
+      temporal:!!(x.propio&&x.propio.expira),hasta:x.propio&&x.propio.expira?x.propio.expira.slice(0,10):null,desde:x.desde||null};
+  }).filter(function(f){return !F.empresa||f.empresa===F.empresa});
+}
+PEST.limites=function(){
+  var L=D.limites;
+  if(!L||L.estado!=="ok"){
+    var msg=!L||L.estado==="sin_datos"?"Todavía no se han leído los límites de uso. Aparecerán tras la próxima actualización.":
+      L.estado==="sin_permiso"?'La Admin key no tiene permiso para leer los límites. En la Admin Console, abre <b>Credentials → Admin keys</b>, edita la clave del panel y pon <b>Usage limits</b> en <b>Read</b>. Después pulsa Actualizar.<br><code>'+esc(L.mensaje)+'</code>':
+      'No se pudieron leer los límites de uso.<br><code>'+esc(L.mensaje)+'</code>';
+    return tarjeta("Límites de uso","Cuánto puede gastar cada persona al mes y quién tiene ese tope ampliado.",vacio(msg));
+  }
+  var f=filasLimites(),sub=f.filter(function(x){return x.propio}),temp=sub.filter(function(x){return x.temporal}),perm=sub.filter(function(x){return !x.temporal});
+  var cerca=f.filter(function(x){return x.pc!=null&&x.pc>=80}),prox=temp.map(function(x){return x.hasta}).sort()[0];
+  var h=bloque("¿Quién tiene el límite subido?","Situación a día de hoy"+(F.empresa?" · "+esc(F.empresa):"")+" · el uso es el del periodo mensual en curso",
+    cifra({rot:"Límite general",val:L.general?txtLimite(L.general):"—",desc:"lo que puede gastar cada persona al mes si no tiene un límite propio",tono:"oro",ayuda:"Límite por defecto del workspace."})+
+    cifra({rot:"Con límite propio",val:num(sub.length),desc:"personas a las que se les ha cambiado el tope",comp:f.length?"<b>"+pct(sub.length,f.length)+" %</b> de las "+num(f.length)+" licencias":"",ayuda:"Tienen una excepción individual sobre el límite general."})+
+    cifra({rot:"Subidas temporales",val:num(temp.length),desc:"vuelven al límite general cuando acaba el periodo",tono:temp.length?"aviso":"",comp:prox?"la primera vence el <b>"+fechaLarga(prox)+"</b>":"",ayuda:"Excepciones con fecha de fin."})+
+    cifra({rot:"Subidas permanentes",val:num(perm.length),desc:"se mantienen hasta que alguien las quite",ayuda:"Excepciones sin fecha de fin."})+
+    cifra({rot:"Cerca del tope",val:num(cerca.length),desc:"han gastado ya el 80 % o más de su límite",tono:cerca.length?"mal":"ok",ayuda:"Uso del periodo en curso frente al límite que les aplica."}));
+  h+=tarjeta("Personas con el límite subido","Quién tiene un tope distinto del general, de cuánto es y hasta cuándo dura. Pulsa una fila para ver la ficha de la persona.",'<div id="t-lim"></div>'+
+    '<div class="pie-tabla">"Desde" es el día en que este panel detectó la subida'+(L.inicio?"; las anteriores al "+fechaLarga(L.inicio)+", cuando empezó a vigilarlas, aparecen como «antes del "+fechaCorta(L.inicio)+"»":"")+'. Una subida temporal dura hasta el final del periodo mensual de uso.</div>',btnCsv("t-lim"));
+  h+='<section class="fila dos">'+tarjeta("Quién está más cerca de su tope","Gasto del periodo en curso frente al límite de cada persona.",'<div id="l-top"></div>')+
+    tarjeta("Cambios de límite","Subidas, cambios y finales detectados por el panel.",'<div id="t-limh"></div>',btnCsv("t-limh"))+'</section>';
+  h+=tarjeta("Límite y gasto de todas las personas","El límite que aplica a cada una, de dónde viene y cuánto lleva gastado este periodo.",'<div id="t-limt"></div>',btnCsv("t-limt"));
+  return h;
+};
+PEST.limites.despues=function(){
+  var L=D.limites;if(!L||L.estado!=="ok")return;
+  var f=filasLimites(),sub=f.filter(function(x){return x.propio});
+  var barra=function(x){if(x.pc==null)return x.limN===Infinity?"sin tope":"—";var p=Math.min(100,x.pc);return '<span class="mini"><i style="width:'+p+'%;background:'+(x.pc>=100?"var(--error)":x.pc>=80?"var(--aviso)":"var(--ok)")+'"></i></span>'+Math.round(x.pc)+' %'};
+  var cLim=function(k,t){return{k:k+"N",t:t,num:1,html:function(x){return esc(txtLimite(x[k]))},csv:function(x){return txtLimite(x[k])}}};
+  sub.forEach(function(x){x.propioN=x.propio.tipo==="unlimited"?Infinity:importeLimite(x.propio.importe,x.propio.unidad);x.generalN=x.general&&x.general.tipo!=="unlimited"?importeLimite(x.general.importe,x.general.unidad):null});
+  f.forEach(function(x){x.efectivoN=x.limN});
+  tabla("t-lim",[COL.persona,COL.empresa,cLim("general","Límite general"),cLim("propio","Límite propio"),
+    {k:"veces",t:"Aumento",num:1,html:function(x){return x.veces===Infinity?"sin tope":x.veces==null?"—":x.veces>=1?"× "+dec(x.veces):"reducido"},csv:function(x){return x.veces===Infinity?"sin tope":x.veces==null?"":x.veces}},
+    {k:"temporal",t:"Duración",html:function(x){return '<span class="eti '+(x.temporal?"parado":"activo")+'">'+(x.temporal?"Temporal":"Permanente")+'</span>'},csv:function(x){return x.temporal?"Temporal":"Permanente"}},
+    {k:"desde",t:"Desde",num:1,html:function(x){return x.desde?fechaLarga(x.desde):L.inicio?"antes del "+fechaCorta(L.inicio):"—"},csv:function(x){return x.desde||""}},
+    {k:"hasta",t:"Hasta",num:1,html:function(x){return x.hasta?fechaLarga(x.hasta):"sin fecha de fin"},csv:function(x){return x.hasta||""}},
+    {k:"usadoN",t:"Gastado este periodo",num:1,html:function(x){return esc(txtUso(x.x.usado,x.x.unidad))},csv:function(x){return x.usadoN}},
+    {k:"pc",t:"% del límite",num:1,html:barra,csv:function(x){return x.pc==null?"":Math.round(x.pc)}}],
+    sub,{orden:{k:"hasta",dir:1},nombre:"limites-subidos",vacio:"Nadie tiene un límite propio: a todas las personas se les aplica el límite general.",click:function(x){if(x.i>=0)abrirFicha(x.i)}});
+  var top=f.filter(function(x){return x.pc!=null}).sort(function(a,b){return b.pc-a.pc}).slice(0,8).map(function(x){return{nombre:x.nombre,pc:x.pc}});
+  $("l-top").innerHTML=top.length?listaBarras(top,"pc","var(--aviso)",function(v){return Math.round(v)+" %"},false,8):vacio("Nadie tiene un límite con importe, o la API no informa el gasto del periodo.");
+  var CAMBIO={alta:"Subida",cambio:"Cambio",fin:"Fin"},porEmail={};D.personas.forEach(function(p){if(p.email)porEmail[p.email]=p});
+  tabla("t-limh",[{k:"fecha",t:"Fecha",fmt:fechaLarga},{k:"cambio",t:"Qué pasó",html:function(e){return '<span class="eti '+(e.cambio==="fin"?"baja":"alta")+'">'+esc(CAMBIO[e.cambio]||e.cambio)+'</span>'},csv:function(e){return CAMBIO[e.cambio]||e.cambio}},
+    {k:"nombre",t:"Persona",html:function(e){return esc(e.nombre)+'<span class="correo">'+esc(e.email)+'</span>'}},{k:"lim",t:"Límite",num:1},{k:"hasta",t:"Hasta",num:1,fmt:function(v){return v?fechaLarga(v):"—"}}],
+    (L.historial||[]).map(function(e){var p=porEmail[e.email];return{fecha:e.fecha,cambio:e.cambio,email:e.email,nombre:p?p.nombre:e.email.split("@")[0],empresa:p?p.empresa:"",lim:e.limite?txtLimite(e.limite):"vuelve al general",hasta:e.limite&&e.limite.expira?e.limite.expira.slice(0,10):null}}).filter(function(e){return !F.empresa||e.empresa===F.empresa}),
+    {orden:{k:"fecha",dir:-1},nombre:"cambios-de-limite",vacio:"Todavía no se ha detectado ningún cambio. El panel los anota a partir de ahora, comparando los límites en cada actualización."});
+  tabla("t-limt",[COL.persona,COL.empresa,cLim("efectivo","Límite que aplica"),{k:"origen",t:"De dónde viene"},
+    {k:"usadoN",t:"Gastado este periodo",num:1,html:function(x){return esc(txtUso(x.x.usado,x.x.unidad))},csv:function(x){return x.usadoN}},{k:"pc",t:"% del límite",num:1,html:barra,csv:function(x){return x.pc==null?"":Math.round(x.pc)}}],
+    f,{orden:{k:"pc",dir:-1},nombre:"limites",click:function(x){if(x.i>=0)abrirFicha(x.i)}});
+};
+
 /* ------------------------------------------------------ ficha de persona */
 function abrirFicha(i){
   var p=D.personas[i],q=K.per[i]||nuevoTotal(),dlg=$("ficha"),dia=new Array(K.n).fill(0),tok=new Array(K.n).fill(0);
@@ -1002,7 +1076,7 @@ function pintarTab(){
   Array.prototype.forEach.call($("pestanas").children,function(b){var s=b.getAttribute("data-tab")===TAB;b.setAttribute("aria-selected",s?"true":"false");b.tabIndex=s?0:-1});
   if(!D)return;
   if(D.fuente.estado!=="ok"&&!D.uso.length){cont.innerHTML=vacio(esc(D.fuente.mensaje||"Sin datos."));return}
-  if(!D.dias.length&&TAB!=="licencias"&&TAB!=="resumen"&&TAB!=="factura"&&TAB!=="estimador"){cont.innerHTML=vacio("La API todavía no ha devuelto registros de uso.");return}
+  if(!D.dias.length&&TAB!=="licencias"&&TAB!=="resumen"&&TAB!=="factura"&&TAB!=="estimador"&&TAB!=="limites"){cont.innerHTML=vacio("La API todavía no ha devuelto registros de uso.");return}
   var f=PEST[TAB]||PEST.resumen;
   cont.innerHTML=f();
   if(f.despues)f.despues();

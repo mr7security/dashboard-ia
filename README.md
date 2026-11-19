@@ -18,6 +18,7 @@ librería estándar (`proxy.py`), un `index.html`, datos en ficheros y servicio 
 | Estimador | Coste de una carga de trabajo (modelo, tipo de consulta, personas) con los precios observados en el uso real |
 | Tendencias | Activos y mensajes por semana, mapa por día de la semana, evolución de puestos, activos por mes |
 | Licencias | Candidatos a reasignar, owners y admins, SCIM, altas y bajas, cuentas con uso que ya no son miembros |
+| Límites | Límite mensual de cada persona, quién lo tiene subido, desde y hasta cuándo, y cuánto lleva gastado |
 
 Filtros comunes: periodo (7, 30, 90 días, todo o fechas a mano) y empresa. Todas las
 tablas se exportan a CSV. Tema claro u oscuro.
@@ -28,6 +29,9 @@ Admin API del workspace (`api.chatgpt.com`) con una Admin key de solo lectura:
 
     GET /v1/manage/workspaces/{id}/users
     GET /v1/analytics/workspaces/{id}/usage
+    GET /v1/manage/workspaces/{id}/usage_limits/workspace
+    GET /v1/manage/workspaces/{id}/usage_limits/users/{user_id}
+    GET /v1/manage/workspaces/{id}/usage_limits/users/{user_id}/monthly-usage
 
 La API devuelve unos 30 días de uso. El servidor guarda cada día en
 `data/uso_diario.json`, así que el histórico crece con el tiempo (dos años por defecto).
@@ -40,11 +44,12 @@ pueden llegar vacíos; el panel solo muestra créditos cuando la API los informa
 | `miembros.json` | Última lista de miembros, para detectar altas y bajas |
 | `eventos.csv` | Altas y bajas detectadas |
 | `historico.csv` | Foto diaria: puestos, activos y sin uso |
+| `limites.json` | Límites propios vistos en la última lectura y cambios detectados |
 
 ### Admin key del workspace
 
 Admin Console > workspace > **Credentials > Admin keys > Create new admin key**.
-Permisos **Custom**, en **Read**: Enterprise analytics API y Users. Hace falta rol
+Permisos **Custom**, en **Read**: Enterprise analytics API, Users y Usage limits (este último solo lo usa la pestaña Límites). Hace falta rol
 Owner o Admin del workspace. El UUID del workspace va en `CHATGPT_WORKSPACE_ID`.
 
 ## Configuración (`config.json`)

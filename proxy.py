@@ -34,6 +34,7 @@ import os
 import socket
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import time
 import unicodedata
 import urllib.error
@@ -52,6 +53,7 @@ ARCHIVO_MIEMBROS = DATA / "miembros.json"
 ARCHIVO_EVENTOS = DATA / "eventos.csv"
 ARCHIVO_HISTORICO = DATA / "historico.csv"
 ARCHIVO_RELLENO = DATA / "relleno.json"
+ARCHIVO_LIMITES = DATA / "limites.json"
 
 API_CHATGPT = "https://api.chatgpt.com/v1"
 MESES_RELLENO = 24
@@ -483,6 +485,119 @@ def publico(cfg):
             "dias_activo": int(cfg.get("dias_activo", 7)), "dias_reasignar": int(cfg.get("dias_reasignar", 30))}
 
 
+# ------------------------------------------------------- límites de uso
+
+def regla_limite(r):
+    """Regla de límite de la API -> {tipo, importe, unidad, expira[, origen]} o None.
+
+    La API da el límite propio como lista de una regla, y el efectivo y el
+    heredado como {limit: regla, source: {kind}}."""
+    if isinstance(r, list):
+        r = r[0] if r else None
+    if not isinstance(r, dict):
+        return None
+    if isinstance(r.get("limit"), dict):
+        regla = regla_limite(r["limit"]) or {"tipo": "", "importe": None, "unidad": None, "expira": None}
+        regla["origen"] = str((r.get("source") or {}).get("kind") or "")
+        return regla
+    importe = unidad = None
+    cantidad = r.get("limit_amount")
+    if isinstance(cantidad, dict):
+        importe, unidad = a_numero(cantidad.get("amount"), None), cantidad.get("unit")
+    elif r.get("limit") is not None:
+        importe, unidad = a_numero(r.get("limit"), None), "credit"
+    return {"tipo": str(r.get("type") or ""), "importe": importe, "unidad": unidad,
+            "expira": r.get("limit_expires_at")}
+
+
+def leer_limites(clave, ws, usuarios):
+    """Límite mensual de cada persona y uso del periodo, con la API de límites de uso."""
+    base = "/manage/workspaces/%s/usage_limits" % urllib.parse.quote(ws, safe="")
+    res = {"estado": "ok", "mensaje": "", "unidad": None, "general": None, "personas": [], "fallos": 0}
+    try:
+        w = api_get(base + "/workspace", clave)
+    except ErrorAPI as e:
+        res.update(estado="sin_permiso" if e.codigo in (401, 403) else "error", mensaje=str(e))
+        return res
+    for campo in ("default_monthly_usage_limit", "monthly_usage_limit", "default_usage_limit"):
+        if isinstance(w, dict) and w.get(campo) is not None:
+            res["general"] = regla_limite(w[campo])
+            break
+
+    def una(u):
+        ruta = "%s/users/%s" % (base, urllib.parse.quote(str(u.get("id")), safe=""))
+        d = api_get(ruta, clave)
+        try:
+            m = api_get(ruta + "/monthly-usage", clave)
+        except ErrorAPI:
+            m = {}
+        return {"email": (u.get("email") or "").strip().lower(), "id": u.get("id"),
+                "propio": regla_limite(d.get("override_monthly_usage_limit")),
+                "efectivo": regla_limite(d.get("effective_monthly_usage_limit")),
+                "heredado": regla_limite(d.get("inherited_monthly_usage_limit")),
+                "usado": a_numero(m.get("current_month_usage"), None), "unidad": m.get("current_month_usage_unit")}
+
+    def segura(u):
+        try:
+            return una(u)
+        except ErrorAPI as e:
+            return e
+
+    con_id = [u for u in usuarios if u.get("id")]
+    with ThreadPoolExecutor(max_workers=4) as hilos:
+        resultados = list(hilos.map(segura, con_id))
+    errores = [r for r in resultados if isinstance(r, ErrorAPI)]
+    res["personas"] = [r for r in resultados if not isinstance(r, ErrorAPI)]
+    res["fallos"] = len(errores)
+    if errores and not res["personas"]:
+        e = errores[0]
+        res.update(estado="sin_permiso" if e.codigo in (401, 403) else "error", mensaje=str(e))
+        return res
+    unidades = [p["unidad"] for p in res["personas"] if p["unidad"]]
+    res["unidad"] = max(set(unidades), key=unidades.count) if unidades else None
+    # Sin límite general explícito, se deduce del que heredan las personas sin límite propio.
+    if res["general"] is None:
+        for p in res["personas"]:
+            ref = p["heredado"] or (p["efectivo"] if not p["propio"] else None)
+            if ref and ref.get("origen") in ("workspace_default", ""):
+                res["general"] = {k: ref.get(k) for k in ("tipo", "importe", "unidad", "expira")}
+                break
+    return res
+
+
+def seguir_limites(limites):
+    """Anota desde cuándo tiene cada persona su límite propio y guarda el historial."""
+    previo = leer_json(ARCHIVO_LIMITES, None)
+    primera_vez = not isinstance(previo, dict)
+    guardado = {} if primera_vez else previo.get("actual", {})
+    historial = [] if primera_vez else list(previo.get("historial", []))
+    hoy = date.today().isoformat()
+    inicio = hoy if primera_vez else previo.get("inicio", hoy)
+    actual = {}
+    for p in limites["personas"]:
+        uid = str(p["id"])
+        if not p["propio"]:
+            continue
+        firma = json.dumps(p["propio"], sort_keys=True)
+        antes = guardado.get(uid)
+        if antes and antes.get("firma") == firma:
+            desde = antes.get("desde")
+        else:
+            desde = None if primera_vez else hoy
+            if not primera_vez:
+                historial.append({"fecha": hoy, "cambio": "cambio" if antes else "alta", "email": p["email"],
+                                  "limite": p["propio"]})
+        actual[uid] = {"firma": firma, "desde": desde, "email": p["email"]}
+        p["desde"] = desde
+    for uid, antes in guardado.items():
+        if uid not in actual:
+            historial.append({"fecha": hoy, "cambio": "fin", "email": antes.get("email", ""), "limite": None})
+    historial = historial[-500:]
+    escribir_json(ARCHIVO_LIMITES, {"inicio": inicio, "actual": actual, "historial": historial})
+    limites["inicio"] = inicio
+    limites["historial"] = historial
+
+
 def leer_real(cfg):
     clave = os.environ.get("CHATGPT_ADMIN_KEY", "").strip()
     ws = (os.environ.get("CHATGPT_WORKSPACE_ID", "") or str(cfg.get("workspace_id", ""))).strip()
@@ -522,6 +637,17 @@ def leer_real(cfg):
                 fuente["avisos"].append("No se pudo guardar el uso en disco: %s" % e)
 
     tablas = construir(cfg, usuarios, almacen)
+    tablas["limites"] = {"estado": "sin_datos", "mensaje": "", "personas": [], "historial": []}
+    if fuente["estado"] == "ok":
+        try:
+            limites = leer_limites(clave, ws, usuarios)
+            if limites["estado"] == "ok":
+                seguir_limites(limites)
+            tablas["limites"] = limites
+        except OSError as e:
+            fuente["avisos"].append("No se pudo guardar el historial de límites: %s" % e)
+        except Exception as e:  # la pestaña de límites no debe tumbar el resto del panel
+            tablas["limites"] = {"estado": "error", "mensaje": repr(e), "personas": [], "historial": []}
     if fuente["estado"] == "ok":
         try:
             guardar_foto_diaria(resumen_puestos(tablas, int(cfg.get("dias_activo", 7))))
@@ -593,6 +719,29 @@ def datos_demo(cfg):
     tablas = construir(dict(cfg, empresas={"alfa.demo": "Alfa Cerámica", "beta.demo": "Beta Logística",
                                            "gamma.demo": "Gamma Servicios", "delta.demo": "Delta"}),
                        usuarios, fusionar({}, registros, 730))
+    def regla(importe, expira=None, origen=None):
+        r = {"tipo": "limited", "importe": importe, "unidad": "usd", "expira": expira}
+        if origen:
+            r["origen"] = origen
+        return r
+    fin_periodo = (hoy + timedelta(days=21)).isoformat() + "T00:00:00Z"
+    personas_lim = []
+    for i, u in enumerate(usuarios, start=1):
+        propio = regla(150, fin_periodo) if i in (3, 12, 24) else regla(300) if i in (6, 30) else None
+        usado = round(((i * 37) % 53) * (2.6 if propio else 0.9), 2)
+        personas_lim.append({"email": u["email"], "id": u["id"], "propio": propio,
+                             "efectivo": dict(propio, origen="individual_override") if propio else regla(50, None, "workspace_default"),
+                             "heredado": regla(50, None, "workspace_default") if propio else None,
+                             "usado": usado, "unidad": "usd",
+                             "desde": (date.today() - timedelta(days=(i * 3) % 19)).isoformat() if propio and i != 6 else None})
+    tablas["limites"] = {
+        "estado": "ok", "mensaje": "", "unidad": "usd", "general": regla(50), "personas": personas_lim, "fallos": 0,
+        "inicio": (date.today() - timedelta(days=40)).isoformat(),
+        "historial": [{"fecha": (date.today() - timedelta(days=d)).isoformat(), "cambio": t, "email": e, "limite": l}
+                      for d, t, e, l in ((15, "alta", usuarios[11]["email"], regla(150, fin_periodo)),
+                                         (9, "alta", usuarios[23]["email"], regla(150, fin_periodo)),
+                                         (6, "cambio", usuarios[29]["email"], regla(300)),
+                                         (2, "fin", usuarios[7]["email"], None))]}
     actual = resumen_puestos(tablas, int(cfg.get("dias_activo", 7)))
     historico = [{"fecha": (date.today() - timedelta(days=d)).isoformat(),
                   "total": actual["total"] - d // 14, "activos": max(0, actual["activos"] - d // 10),
@@ -646,9 +795,12 @@ class Estado:
             r = resumen_puestos(tablas, int(cfg.get("dias_activo", 7)))
             con_creditos = sum(1 for f in tablas["uso"] if f[8] is not None)
             con_importe = sum(1 for f in tablas["uso"] if f[9] is not None)
-            log("Datos actualizados - ChatGPT: %s (%s puestos, %s activos, %s sin uso) - %s días de uso, %s filas (%s con créditos, %s con importe)%s" % (
+            lim = tablas.get("limites") or {}
+            txt_lim = "%s (%s con límite propio, %s fallos)" % (
+                lim.get("estado"), sum(1 for p in lim.get("personas", []) if p.get("propio")), lim.get("fallos", 0))
+            log("Datos actualizados - ChatGPT: %s (%s puestos, %s activos, %s sin uso) - %s días de uso, %s filas (%s con créditos, %s con importe) - límites: %s%s" % (
                 fuente["estado"], r["total"], r["activos"], r["sin_uso"], len(tablas["dias"]),
-                len(tablas["uso"]), con_creditos, con_importe, " - AVISOS: " + " | ".join(fuente["avisos"]) if fuente["avisos"] else ""))
+                len(tablas["uso"]), con_creditos, con_importe, txt_lim, " - AVISOS: " + " | ".join(fuente["avisos"]) if fuente["avisos"] else ""))
             if fuente["estado"] != "ok":
                 log("AVISO:", fuente["mensaje"])
 
