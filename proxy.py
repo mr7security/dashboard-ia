@@ -455,6 +455,24 @@ def construir(cfg, usuarios, almacen):
             "clientes": clientes}
 
 
+def anadir_bajas(tablas, eventos, cfg):
+    """Marca la fecha de baja de quien ya no es miembro y añade a quien se dio de
+    baja sin uso guardado, para que el panel también lo muestre."""
+    por_email = {p["email"]: p for p in tablas["personas"] if p["email"]}
+    for e in sorted(eventos, key=lambda x: x.get("fecha") or ""):
+        email = (e.get("email") or "").strip().lower()
+        if e.get("tipo") != "baja" or not email:
+            continue
+        p = por_email.get(email)
+        if p is None:
+            p = {"email": email, "nombre": e.get("nombre") or email.split("@")[0],
+                 "empresa": empresa_de(email, cfg), "miembro": False, "rol": "", "puesto": "", "scim": False}
+            tablas["personas"].append(p)
+            por_email[email] = p
+        if not p["miembro"]:
+            p["baja"] = e.get("fecha")
+
+
 def resumen_puestos(tablas, dias_activo):
     """Totales para el registro y la foto diaria."""
     hoy, ultima = hoy_utc(), {}
@@ -676,7 +694,9 @@ def leer_real(cfg):
             guardar_foto_diaria(resumen_puestos(tablas, int(cfg.get("dias_activo", 7))))
         except OSError as e:
             fuente["avisos"].append("No se pudo guardar la foto diaria: %s" % e)
-    return fuente, tablas, historico_para_json(leer_historico()), leer_eventos()[-500:]
+    eventos = leer_eventos()
+    anadir_bajas(tablas, eventos, cfg)
+    return fuente, tablas, historico_para_json(leer_historico()), eventos[-500:]
 
 
 # ------------------------------------------------------------------------ demo
@@ -739,9 +759,9 @@ def datos_demo(cfg):
                             "text_output_tokens": salida - salida * 7 // 10,
                             "text_total_tokens": total - total * 7 // 10}],
             })
-    tablas = construir(dict(cfg, empresas={"alfa.demo": "Alfa Cerámica", "beta.demo": "Beta Logística",
-                                           "gamma.demo": "Gamma Servicios", "delta.demo": "Delta"}),
-                       usuarios, fusionar({}, registros, 730))
+    tablas_cfg = dict(cfg, empresas={"alfa.demo": "Alfa Cerámica", "beta.demo": "Beta Logística",
+                                     "gamma.demo": "Gamma Servicios", "delta.demo": "Delta"})
+    tablas = construir(tablas_cfg, usuarios, fusionar({}, registros, 730))
     def regla(importe, expira=None, origen=None):
         r = {"tipo": "limited", "importe": importe, "unidad": "usd", "expira": expira, "creditos": importe * 25}
         if origen:
@@ -772,8 +792,10 @@ def datos_demo(cfg):
     eventos = [{"fecha": (date.today() - timedelta(days=d)).isoformat(), "tipo": t, "email": e, "nombre": n}
                for d, t, e, n in ((41, "baja", "antiguo1@beta.demo", "Antiguo 1"),
                                   (40, "baja", "antiguo2@beta.demo", "Antiguo 2"),
+                                  (33, "baja", "antiguo3@alfa.demo", "Antiguo 3"),
                                   (27, "alta", "usuario31@beta.demo", "Usuario 31"),
                                   (12, "alta", "usuario32@gamma.demo", "Usuario 32"))]
+    anadir_bajas(tablas, eventos, tablas_cfg)
     return {"estado": "ok", "mensaje": "", "avisos": []}, tablas, historico, eventos
 
 
