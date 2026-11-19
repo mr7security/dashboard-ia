@@ -666,10 +666,10 @@ PEST.personas=function(){
     '<button type="button" role="tab" data-sub="ex" aria-selected="'+ex+'">Ya no son miembros <span>'+num(nE)+'</span></button></nav>';
   var herr='<input type="search" id="q-buscar" placeholder="Buscar nombre o email…" aria-label="Buscar" value="'+esc(Q.buscar)+'">'+
     (ex?"":'<select id="q-estado" aria-label="Estado"><option value="">Todos los estados</option>'+["activo","parado","sin_uso"].map(function(e){return '<option value="'+e+'"'+(Q.estado===e?" selected":"")+'>'+ESTADO[e]+'</option>'}).join("")+'</select>'+
-    '<select id="q-rol" aria-label="Rol"><option value="">Todos los roles</option>'+Object.keys(roles).sort().map(function(r){return '<option value="'+esc(r)+'"'+(Q.rol===r?" selected":"")+'>'+esc(nombreRol(r))+'</option>'}).join("")+'</select>')+btnCsv("t-per");
+    '<select id="q-rol" aria-label="Rol"><option value="">Todos los roles</option>'+Object.keys(roles).sort().map(function(r){return '<option value="'+esc(r)+'"'+(Q.rol===r?" selected":"")+'>'+esc(nombreRol(r))+'</option>'}).join("")+'</select>')+btnCsv(ex?"t-perx":"t-per");
   var ayuda=ex?'<span id="per-n"></span> Personas que usaron ChatGPT y ya no tienen licencia en el workspace. Su uso sigue contando en los totales del periodo en que lo hicieron.':
     '<span id="per-n"></span> Pulsa una fila para ver la ficha completa. <b>En uso</b>: ha usado ChatGPT en los últimos '+da+' días · <b>Parada</b>: lleva más de '+da+' días sin usarlo · <b>Sin estrenar</b>: nunca lo ha usado.';
-  return sub+tarjeta(ex?"Ya no son miembros":"Personas con licencia",ayuda,'<div id="t-per"></div><div class="pie-tabla">Fechas en UTC, tal como las da la API. El último día puede estar incompleto.</div>',herr);
+  return sub+tarjeta(ex?"Ya no son miembros":"Personas con licencia",ayuda,'<div id="'+(ex?"t-perx":"t-per")+'"></div><div class="pie-tabla">Fechas en UTC, tal como las da la API. El último día puede estar incompleto.</div>',herr);
 };
 PEST.personas.despues=function(){
   var q=Q.buscar.trim().toLowerCase(),ex=Q.sub==="ex",busca=function(f){return !q||(f.nombre+" "+f.email).toLowerCase().indexOf(q)>=0};
@@ -680,7 +680,7 @@ PEST.personas.despues=function(){
     var ce=[COL.persona,COL.empresa,{k:"primera",t:"Primer uso",num:1,fmt:function(v){return v?fechaLarga(v):"—"}},{k:"ultima",t:"Último uso",num:1,fmt:function(v){return v?fechaLarga(v):"—"}},
       {k:"total",t:"Mensajes en total",num:1,fmt:num},{k:"m",t:"Mensajes en el periodo",num:1,fmt:num},COL.dias];
     if(dinero2)ce.push(dinero2);ce.push(COL.tt);
-    tabla("t-per",ce,listaEx,{orden:{k:"ultima",dir:-1},nombre:"ya-no-son-miembros",vacio:"No hay personas con uso guardado que ya no tengan licencia.",click:function(f){abrirFicha(f.i)}});
+    tabla("t-perx",ce,listaEx,{orden:{k:"ultima",dir:-1},nombre:"ya-no-son-miembros",vacio:"No hay personas con uso guardado que ya no tengan licencia.",click:function(f){abrirFicha(f.i)}});
     return;
   }
   var todas=filasPersonas().filter(function(f){return f.estado!=="ex"});
