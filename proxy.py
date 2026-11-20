@@ -606,6 +606,71 @@ def leer_limites(clave, ws, usuarios):
     return res
 
 
+def paginas(ruta, clave, tope=200):
+    """Todas las páginas de una lista. Admite los dos cursores que usa la API: cursor y last_id."""
+    elementos, parametros, vistos = [], {"limit": 100}, set()
+    for _ in range(tope):
+        r = api_get(ruta, clave, parametros)
+        if isinstance(r, list):
+            return elementos + r
+        elementos.extend(r.get("data") or [])
+        if not r.get("has_more"):
+            break
+        if r.get("cursor"):
+            parametros = {"limit": 100, "cursor": r["cursor"]}
+        elif r.get("last_id"):
+            parametros = {"limit": 100, "after": r["last_id"]}
+        else:
+            break
+        marca = parametros.get("cursor") or parametros.get("after")
+        if marca in vistos:
+            break
+        vistos.add(marca)
+    return elementos
+
+
+def leer_grupos(clave, ws, usuarios):
+    """Grupos del workspace y quién pertenece a cada uno."""
+    base = "/manage/workspaces/%s/groups" % urllib.parse.quote(ws, safe="")
+    res = {"estado": "ok", "mensaje": "", "grupos": [], "fallos": 0}
+    try:
+        lista = paginas(base, clave)
+    except ErrorAPI as e:
+        codigo = getattr(e, "codigo", None)
+        res.update(estado="sin_permiso" if codigo in (401, 403) else "error", mensaje=str(e))
+        return res
+    email_de = {str(u.get("id")): (u.get("email") or "").strip().lower() for u in usuarios if u.get("id")}
+
+    def miembros(g):
+        try:
+            filas = paginas("%s/%s/users" % (base, urllib.parse.quote(str(g.get("id")), safe="")), clave)
+        except ErrorAPI as e:
+            return e
+        emails = set()
+        for f in filas:
+            if not isinstance(f, dict) or f.get("status") == "deactivated":
+                continue
+            email = email_de.get(str(f.get("id"))) or (f.get("email") or "").strip().lower()
+            if email:
+                emails.add(email)
+        return sorted(emails)
+
+    grupos = [g for g in lista if isinstance(g, dict) and g.get("id")]
+    with ThreadPoolExecutor(max_workers=4) as hilos:
+        resultados = list(hilos.map(miembros, grupos))
+    for g, m in zip(grupos, resultados):
+        if isinstance(m, ErrorAPI):
+            res["fallos"] += 1
+            res["mensaje"] = str(m)
+            m = []
+        res["grupos"].append({"nombre": g.get("name") or g.get("display_name") or str(g.get("id")),
+                              "descripcion": g.get("description") or "", "miembros": m})
+    if grupos and res["fallos"] == len(grupos):
+        res["estado"] = "error"
+    res["grupos"].sort(key=lambda g: g["nombre"].lower())
+    return res
+
+
 def seguir_limites(limites):
     """Anota desde cuándo tiene cada persona su límite propio y guarda el historial."""
     previo = leer_json(ARCHIVO_LIMITES, None)
@@ -696,6 +761,12 @@ def leer_real(cfg):
             fuente["avisos"].append("No se pudo guardar el historial de límites: %s" % e)
         except Exception as e:  # la pestaña de límites no debe tumbar el resto del panel
             tablas["limites"] = {"estado": "error", "mensaje": repr(e), "personas": [], "historial": []}
+    tablas["grupos"] = {"estado": "sin_datos", "mensaje": "", "grupos": [], "fallos": 0}
+    if fuente["estado"] == "ok":
+        try:
+            tablas["grupos"] = leer_grupos(clave, ws, usuarios)
+        except Exception as e:  # tampoco la de grupos
+            tablas["grupos"] = {"estado": "error", "mensaje": repr(e), "grupos": [], "fallos": 0}
     if fuente["estado"] == "ok":
         try:
             guardar_foto_diaria(resumen_puestos(tablas, int(cfg.get("dias_activo", 7))))
@@ -799,6 +870,13 @@ def datos_demo(cfg):
                                             (9, "alta", usuarios[23]["email"], regla(150, fin_periodo), None),
                                             (6, "cambio", usuarios[29]["email"], regla(300), regla(120)),
                                             (2, "fin", usuarios[7]["email"], None, regla(200)))]}
+    correos = [u["email"] for u in usuarios]
+    tablas["grupos"] = {"estado": "ok", "mensaje": "", "fallos": 0, "grupos": [
+        {"nombre": "Comercial", "descripcion": "Equipo de ventas", "miembros": correos[0:9]},
+        {"nombre": "Dirección", "descripcion": "", "miembros": correos[7:11] + correos[29:30]},
+        {"nombre": "Diseño", "descripcion": "", "miembros": correos[11:17]},
+        {"nombre": "Informática", "descripcion": "Sistemas y desarrollo", "miembros": correos[17:25] + correos[2:3]},
+        {"nombre": "Pruebas", "descripcion": "Grupo vacío", "miembros": []}]}
     actual = resumen_puestos(tablas, int(cfg.get("dias_activo", 7)))
     historico = [{"fecha": (date.today() - timedelta(days=d)).isoformat(),
                   "total": actual["total"] - d // 14, "activos": max(0, actual["activos"] - d // 10),
@@ -857,9 +935,12 @@ class Estado:
             lim = tablas.get("limites") or {}
             txt_lim = "%s (%s con límite propio, %s fallos)" % (
                 lim.get("estado"), sum(1 for p in lim.get("personas", []) if p.get("propio")), lim.get("fallos", 0))
-            log("Datos actualizados - ChatGPT: %s (%s puestos, %s activos, %s sin uso) - %s días de uso, %s filas (%s con créditos, %s con importe) - límites: %s%s" % (
+            gr = tablas.get("grupos") or {}
+            txt_gr = "%s (%s grupos, %s fallos)%s" % (gr.get("estado"), len(gr.get("grupos", [])), gr.get("fallos", 0),
+                                                    " " + gr["mensaje"] if gr.get("mensaje") else "")
+            log("Datos actualizados - ChatGPT: %s (%s puestos, %s activos, %s sin uso) - %s días de uso, %s filas (%s con créditos, %s con importe) - límites: %s - grupos: %s%s" % (
                 fuente["estado"], r["total"], r["activos"], r["sin_uso"], len(tablas["dias"]),
-                len(tablas["uso"]), con_creditos, con_importe, txt_lim, " - AVISOS: " + " | ".join(fuente["avisos"]) if fuente["avisos"] else ""))
+                len(tablas["uso"]), con_creditos, con_importe, txt_lim, txt_gr, " - AVISOS: " + " | ".join(fuente["avisos"]) if fuente["avisos"] else ""))
             if fuente["estado"] != "ok":
                 log("AVISO:", fuente["mensaje"])
 
