@@ -626,14 +626,21 @@ def seguir_limites(limites):
         else:
             desde = None if primera_vez else hoy
             if not primera_vez:
-                historial.append({"fecha": hoy, "cambio": "cambio" if antes else "alta", "email": p["email"],
-                                  "limite": p["propio"]})
-        actual[uid] = {"firma": firma, "desde": desde, "email": p["email"]}
+                evento = {"fecha": hoy, "cambio": "cambio" if antes else "alta", "email": p["email"],
+                          "limite": p["propio"], "general": limites.get("general")}
+                if antes:
+                    evento["anterior"], evento["desde"] = antes.get("limite"), antes.get("desde")
+                historial.append(evento)
+        # Se guarda también el límite para poder decir de cuánto era cuando termine.
+        actual[uid] = {"firma": firma, "desde": desde, "email": p["email"], "limite": p["propio"],
+                       "general": limites.get("general")}
         p["desde"] = desde
     for uid, antes in guardado.items():
         if uid not in actual:
-            historial.append({"fecha": hoy, "cambio": "fin", "email": antes.get("email", ""), "limite": None})
-    historial = historial[-500:]
+            historial.append({"fecha": hoy, "cambio": "fin", "email": antes.get("email", ""), "limite": None,
+                              "anterior": antes.get("limite"), "desde": antes.get("desde"),
+                              "general": antes.get("general")})
+    historial = historial[-5000:]
     escribir_json(ARCHIVO_LIMITES, {"inicio": inicio, "actual": actual, "historial": historial})
     limites["inicio"] = inicio
     limites["historial"] = historial
@@ -768,6 +775,7 @@ def datos_demo(cfg):
             r["origen"] = origen
         return r
     fin_periodo = (hoy + timedelta(days=21)).isoformat() + "T00:00:00Z"
+    fin_pasado = (hoy - timedelta(days=24)).isoformat() + "T00:00:00Z"
     personas_lim = []
     for i, u in enumerate(usuarios, start=1):
         propio = regla(150, fin_periodo) if i in (3, 12, 24) else regla(300) if i in (6, 30) else None
@@ -780,11 +788,17 @@ def datos_demo(cfg):
     tablas["limites"] = {
         "estado": "ok", "mensaje": "", "unidad": "usd", "general": regla(50), "personas": personas_lim, "fallos": 0,
         "inicio": (date.today() - timedelta(days=40)).isoformat(),
-        "historial": [{"fecha": (date.today() - timedelta(days=d)).isoformat(), "cambio": t, "email": e, "limite": l}
-                      for d, t, e, l in ((15, "alta", usuarios[11]["email"], regla(150, fin_periodo)),
-                                         (9, "alta", usuarios[23]["email"], regla(150, fin_periodo)),
-                                         (6, "cambio", usuarios[29]["email"], regla(300)),
-                                         (2, "fin", usuarios[7]["email"], None))]}
+        "historial": [dict({"fecha": (date.today() - timedelta(days=d)).isoformat(), "cambio": t, "email": e,
+                            "limite": l, "general": regla(50)}, **({"anterior": a} if a else {}))
+                      for d, t, e, l, a in ((38, "alta", usuarios[11]["email"], regla(100, fin_pasado), None),
+                                            (36, "alta", usuarios[7]["email"], regla(200), None),
+                                            (30, "alta", usuarios[4]["email"], regla(150, fin_pasado), None),
+                                            (24, "fin", usuarios[11]["email"], None, regla(100, fin_pasado)),
+                                            (24, "fin", usuarios[4]["email"], None, regla(150, fin_pasado)),
+                                            (15, "alta", usuarios[11]["email"], regla(150, fin_periodo), None),
+                                            (9, "alta", usuarios[23]["email"], regla(150, fin_periodo), None),
+                                            (6, "cambio", usuarios[29]["email"], regla(300), regla(120)),
+                                            (2, "fin", usuarios[7]["email"], None, regla(200)))]}
     actual = resumen_puestos(tablas, int(cfg.get("dias_activo", 7)))
     historico = [{"fecha": (date.today() - timedelta(days=d)).isoformat(),
                   "total": actual["total"] - d // 14, "activos": max(0, actual["activos"] - d // 10),
