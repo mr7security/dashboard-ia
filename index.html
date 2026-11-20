@@ -698,8 +698,10 @@ PEST.grupos=function(){
   h+='<section class="fila dos">'+tarjeta("Mensajes por grupo","Mensajes enviados en el periodo.",'<div id="g-bar"></div>')+tarjeta("Licencias por grupo","Personas con licencia a día de hoy.",'<div id="g-pue"></div>')+'</section>';
   h+=tarjeta("Detalle por grupo","Aprovechamiento es el porcentaje de licencias usadas en los últimos "+da+" días. Pulsa una fila para ver quién forma el grupo.",'<div id="t-gru"></div>'+
     '<div class="pie-tabla">Una persona puede estar en varios grupos y cuenta en cada uno, así que la suma de los grupos puede superar el total del workspace. «Sin grupo» reúne a quien no está en ninguno.'+(Gr.fallos?" No se pudo leer la composición de "+num(Gr.fallos)+" grupo(s).":"")+'</div>',btnCsv("t-gru"));
-  var sel=L.filter(function(x){return x.nombre===Q.grupo})[0];
+  var sel=L.filter(function(x){return x.nombre===Q.grupo&&!x.sin})[0];
   if(sel)h+=tarjeta("Personas de «"+esc(sel.nombre)+"»",(sel.desc?esc(sel.desc)+" · ":"")+num(sel.puestos)+" personas. Pulsa una fila para ver la ficha completa.",'<div id="t-grup"></div>',btnCsv("t-grup"));
+  h+=tarjeta("Personas sin grupo",sin?num(sin.puestos)+" personas con licencia que no están en ningún grupo del workspace. Pulsa una fila para ver la ficha completa.":"Personas con licencia que no están en ningún grupo del workspace.",
+    sin?'<div id="t-grus"></div>':vacio("Todas las personas con licencia están en algún grupo."),sin?btnCsv("t-grus"):"");
   return h;
 };
 PEST.grupos.despues=function(){
@@ -715,14 +717,14 @@ PEST.grupos.despues=function(){
   else if(L.some(function(x){return x.cr!=null}))cols.push({k:"cr",t:"Créditos",num:1,fmt:function(v){return v==null?"—":dec(v)}});
   if(L.some(function(x){return x.coste}))cols.push({k:"coste",t:"Licencias al mes",num:1,fmt:function(v){return dinero(v)}});
   cols.push({k:"tt",t:"Tokens",num:1,fmt:compacto});
-  tabla("t-gru",cols,L,{orden:{k:"m",dir:-1},nombre:"grupos",click:function(f){Q.grupo=Q.grupo===f.nombre?null:f.nombre;pintarTab();var c=$("t-grup");if(c)c.scrollIntoView({behavior:"smooth",block:"nearest"})}});
-  var sel=L.filter(function(x){return x.nombre===Q.grupo})[0];
-  if(sel&&$("t-grup")){
-    var dinero2=K.T.g!=null?COL.g:K.T.cr!=null?COL.cr:null,pc=[COL.persona,COL.empresa,COL.estado,COL.m,COL.c,COL.dias];
-    if(dinero2)pc.push(dinero2);pc.push(COL.tt,COL.ultima);
-    tabla("t-grup",pc,sel.pers.map(function(p){var q=K.per[p.i]||{};return{i:p.i,nombre:p.nombre,email:p.email,empresa:p.empresa,estado:p.estado,m:q.m||0,c:q.c||0,tt:q.tt||0,cr:q.cr==null?null:q.cr,g:q.g==null?null:q.g,dias:q.dias||0,ultima:p.ultima,inactivo:p.inactivo}}),
-      {orden:{k:"m",dir:-1},nombre:"grupo-"+sel.nombre.toLowerCase().replace(/[^a-z0-9]+/g,"-"),vacio:"Este grupo no tiene a nadie con licencia.",click:function(f){abrirFicha(f.i)}});
-  }
+  tabla("t-gru",cols,L,{orden:{k:"m",dir:-1},nombre:"grupos",click:function(f){if(f.sin){Q.grupo=null;var s0=$("t-grus");if(s0)s0.scrollIntoView({behavior:"smooth",block:"center"});return}
+      Q.grupo=Q.grupo===f.nombre?null:f.nombre;pintarTab();var c=$("t-grup");if(c)c.scrollIntoView({behavior:"smooth",block:"nearest"})}});
+  var dinero2=K.T.g!=null?COL.g:K.T.cr!=null?COL.cr:null,pc=[COL.persona,COL.empresa,COL.estado,COL.m,COL.c,COL.dias];
+  if(dinero2)pc.push(dinero2);pc.push(COL.tt,COL.ultima);
+  var filasDe=function(x){return x.pers.map(function(p){var q=K.per[p.i]||{};return{i:p.i,nombre:p.nombre,email:p.email,empresa:p.empresa,estado:p.estado,m:q.m||0,c:q.c||0,tt:q.tt||0,cr:q.cr==null?null:q.cr,g:q.g==null?null:q.g,dias:q.dias||0,ultima:p.ultima,inactivo:p.inactivo}})};
+  var sel=L.filter(function(x){return x.nombre===Q.grupo&&!x.sin})[0],sin=L.filter(function(x){return x.sin})[0];
+  if(sel&&$("t-grup"))tabla("t-grup",pc,filasDe(sel),{orden:{k:"m",dir:-1},nombre:"grupo-"+sel.nombre.toLowerCase().replace(/[^a-z0-9]+/g,"-"),vacio:"Este grupo no tiene a nadie con licencia.",click:function(f){abrirFicha(f.i)}});
+  if(sin&&$("t-grus"))tabla("t-grus",pc,filasDe(sin),{orden:{k:"nombre",dir:1},nombre:"personas-sin-grupo",click:function(f){abrirFicha(f.i)}});
 };
 
 /* Personas: dos subpestañas, quienes tienen licencia y quienes ya no la tienen */
