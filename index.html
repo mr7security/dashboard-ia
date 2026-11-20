@@ -231,6 +231,7 @@ footer{font-size:12px;color:var(--tenue);text-align:center;padding-top:6px}
   <nav class="pestanas" role="tablist" aria-label="Secciones" id="pestanas">
     <button role="tab" data-tab="resumen">Resumen</button>
     <button role="tab" data-tab="empresas">Empresas</button>
+    <button role="tab" data-tab="grupos">Grupos</button>
     <button role="tab" data-tab="personas">Personas</button>
     <button role="tab" data-tab="modelos">Modelos</button>
     <button role="tab" data-tab="apps">Aplicaciones</button>
@@ -254,7 +255,7 @@ footer{font-size:12px;color:var(--tenue);text-align:center;padding-top:6px}
 "use strict";
 var Z=1; /* ampliación en pantallas grandes */
 
-var D=null,F={desde:null,hasta:null,empresa:""},TAB="resumen",K=null,G=null,TB={},Q={buscar:"",estado:"",rol:"",sub:"miembros",subl:"ahora",modelo:null,periodo:null,est:null};
+var D=null,F={desde:null,hasta:null,empresa:""},TAB="resumen",K=null,G=null,TB={},Q={buscar:"",estado:"",rol:"",sub:"miembros",subl:"ahora",grupo:null,modelo:null,periodo:null,est:null};
 var $=function(id){return document.getElementById(id)};
 var PALETA=["var(--oro2)","var(--azul)","var(--verde)","var(--lila)","var(--rosa)","var(--aviso)","var(--tenue)"];
 var DIA_SEM=["L","M","X","J","V","S","D"];
@@ -373,7 +374,7 @@ function calcular(){
   k.per={};k.emp={};
   var pi0=k.i0-n,hayPrev=n>0&&pi0>=0,prev={m:0,tt:0,cr:null,g:null,act:{}};
   var empDe=function(e){return k.emp[e]||(k.emp[e]={nombre:e,puestos:0,activos:0,parados:0,sin_uso:0,usan:0,m:0,c:0,tt:0,cr:null,g:null,coste:0})};
-  P.forEach(function(p){if(!p.miembro)return;var e=empDe(p.empresa);e.puestos++;e[p.estado==="activo"?"activos":p.estado]++;e.coste+=precioDe(p)});
+  P.forEach(function(p){if(!p.miembro)return;var e=empDe(p.empresa);e.puestos++;e[p.estado==="activo"?"activos":p.estado==="parado"?"parados":"sin_uso"]++;e.coste+=precioDe(p)});
   D.uso.forEach(function(r){
     var d=r[0],p=r[1];
     if(d>=k.i0&&d<=k.i1){
@@ -654,6 +655,74 @@ PEST.empresas.despues=function(){
   if(lista.some(function(x){return x.coste}))cols.push({k:"coste",t:"Licencias al mes",num:1,fmt:function(v){return dinero(v)}});
   cols.push({k:"tt",t:"Tokens",num:1,fmt:compacto});
   tabla("t-emp",cols,lista,{orden:{k:"m",dir:-1},nombre:"empresas",click:function(f){F.empresa=F.empresa===f.nombre?"":f.nombre;$("f-empresa").value=F.empresa;todo()}});
+};
+
+/* Grupos del workspace: como Empresas, pero agrupando por los grupos de ChatGPT.
+   Una persona puede estar en varios grupos y cuenta en cada uno. */
+var SIN_GRUPO="Sin grupo";
+function filasGrupos(){
+  var Gr=D.grupos,porEmail={},enGrupo={},lista=[];
+  D.personas.forEach(function(p){if(p.email)porEmail[p.email]=p});
+  function fila(nombre,desc,pers,sin){
+    var x={nombre:nombre,desc:desc||"",sin:!!sin,pers:pers,puestos:pers.length,activos:0,parados:0,sin_uso:0,usan:0,m:0,c:0,tt:0,cr:null,g:null,coste:0};
+    pers.forEach(function(p){x[p.estado==="activo"?"activos":p.estado==="parado"?"parados":"sin_uso"]++;x.coste+=precioDe(p);var q=K.per[p.i];
+      if(q){x.usan++;x.m+=q.m;x.c+=q.c;x.tt+=q.tt;x.cr=suma(x.cr,q.cr);x.g=suma(x.g,q.g)}});
+    x.adop=pct(x.activos,x.puestos);x.porPuesto=x.puestos?x.m/x.puestos:0;return x;
+  }
+  var visibles={};K.miembros.forEach(function(p){visibles[p.i]=1});
+  (Gr.grupos||[]).forEach(function(g){
+    var pers=[];(g.miembros||[]).forEach(function(em){var p=porEmail[em];if(p&&p.miembro){enGrupo[p.i]=1;if(visibles[p.i])pers.push(p)}});
+    if(pers.length||!F.empresa)lista.push(fila(g.nombre,g.descripcion,pers));
+  });
+  var sueltos=K.miembros.filter(function(p){return !enGrupo[p.i]});
+  if(sueltos.length)lista.push(fila(SIN_GRUPO,"Personas con licencia que no están en ningún grupo",sueltos,true));
+  return lista;
+}
+PEST.grupos=function(){
+  var Gr=D.grupos;
+  if(!Gr||Gr.estado!=="ok"){
+    var msg=!Gr||Gr.estado==="sin_datos"?"Todavía no se han leído los grupos. Aparecerán tras la próxima actualización.":
+      Gr.estado==="sin_permiso"?'La Admin key no tiene permiso para leer los grupos. En la Admin Console, abre <b>Credentials → Admin keys</b>, edita la clave del panel y dale permiso de lectura sobre los grupos. Después pulsa Actualizar.<br><code>'+esc(Gr.mensaje)+'</code>':
+      'No se pudieron leer los grupos del workspace.<br><code>'+esc(Gr.mensaje)+'</code>';
+    return tarjeta("Grupos","Uso de ChatGPT por cada grupo del workspace.",vacio(msg));
+  }
+  var L=filasGrupos(),reales=L.filter(function(x){return !x.sin}),sin=L.filter(function(x){return x.sin})[0],con=reales.filter(function(x){return x.puestos});
+  if(!L.length)return vacio("No hay grupos ni personas con licencia.");
+  var da=D.cfg.dias_activo,masUso=reales.slice().sort(function(a,b){return b.m-a.m})[0],ad=con.slice().sort(function(a,b){return b.activos/b.puestos-a.activos/a.puestos}),mejor=ad[0],peor=ad[ad.length-1];
+  var h=bloque("¿Qué grupos lo usan más?","Grupos creados en el workspace de ChatGPT · periodo del "+fechaLarga(F.desde)+" al "+fechaLarga(F.hasta)+(F.empresa?" · "+esc(F.empresa):""),
+    cifra({rot:"Grupos",val:num(reales.length),desc:"existen en el workspace"+(reales.length-con.length?" · "+num(reales.length-con.length)+" sin nadie":""),tono:"oro"})+
+    (masUso&&masUso.m?cifra({rot:"El que más lo usa",val:esc(masUso.nombre),texto:1,desc:num(masUso.m)+" mensajes en el periodo",comp:"<b>"+pct1(masUso.m,K.T.m)+"</b> de todos los mensajes"}):"")+
+    (mejor?cifra({rot:"Mejor aprovechamiento",val:esc(mejor.nombre),texto:1,desc:num(mejor.activos)+" de "+num(mejor.puestos)+" licencias en uso",tono:"ok",pct:mejor.adop,comp:"<b>"+mejor.adop+" %</b> usadas en los últimos "+da+" días"}):"")+
+    (peor&&peor!==mejor?cifra({rot:"Peor aprovechamiento",val:esc(peor.nombre),texto:1,desc:num(peor.activos)+" de "+num(peor.puestos)+" licencias en uso",tono:"aviso",pct:peor.adop,color:"var(--aviso)",comp:"<b>"+peor.adop+" %</b> usadas en los últimos "+da+" días"}):"")+
+    cifra({rot:"Sin grupo",val:num(sin?sin.puestos:0),desc:"personas con licencia que no están en ningún grupo",tono:sin?"aviso":"ok",comp:sin&&K.miembros.length?"<b>"+pct(sin.puestos,K.miembros.length)+" %</b> de las licencias":""}));
+  h+='<section class="fila dos">'+tarjeta("Mensajes por grupo","Mensajes enviados en el periodo.",'<div id="g-bar"></div>')+tarjeta("Licencias por grupo","Personas con licencia a día de hoy.",'<div id="g-pue"></div>')+'</section>';
+  h+=tarjeta("Detalle por grupo","Aprovechamiento es el porcentaje de licencias usadas en los últimos "+da+" días. Pulsa una fila para ver quién forma el grupo.",'<div id="t-gru"></div>'+
+    '<div class="pie-tabla">Una persona puede estar en varios grupos y cuenta en cada uno, así que la suma de los grupos puede superar el total del workspace. «Sin grupo» reúne a quien no está en ninguno.'+(Gr.fallos?" No se pudo leer la composición de "+num(Gr.fallos)+" grupo(s).":"")+'</div>',btnCsv("t-gru"));
+  var sel=L.filter(function(x){return x.nombre===Q.grupo})[0];
+  if(sel)h+=tarjeta("Personas de «"+esc(sel.nombre)+"»",(sel.desc?esc(sel.desc)+" · ":"")+num(sel.puestos)+" personas. Pulsa una fila para ver la ficha completa.",'<div id="t-grup"></div>',btnCsv("t-grup"));
+  return h;
+};
+PEST.grupos.despues=function(){
+  var Gr=D.grupos;if(!Gr||Gr.estado!=="ok")return;
+  var L=filasGrupos();if(!L.length)return;
+  $("g-bar").innerHTML=listaBarras(L.slice().sort(function(a,b){return b.m-a.m}),"m","var(--oro2)",num);
+  $("g-pue").innerHTML=listaBarras(L.slice().sort(function(a,b){return b.puestos-a.puestos}),"puestos","var(--azul)",num);
+  var cols=[{k:"nombre",t:"Grupo",html:function(f){return (f.sin?'<i>'+esc(f.nombre)+'</i>':esc(f.nombre))+(f.desc&&!f.sin?'<span class="correo">'+esc(f.desc)+'</span>':"")}},{k:"puestos",t:"Licencias",num:1,fmt:num},{k:"activos",t:"En uso",num:1,fmt:num},
+    {k:"adop",t:"Aprovechamiento",num:1,html:function(f){return f.puestos?'<span class="mini"><i style="width:'+f.adop+'%"></i></span>'+f.adop+' %':"—"}},
+    {k:"parados",t:"Paradas",num:1,fmt:num},{k:"sin_uso",t:"Sin estrenar",num:1,fmt:num},{k:"usan",t:"Personas con uso en el periodo",num:1,fmt:num},
+    {k:"m",t:"Mensajes",num:1,fmt:num},{k:"porPuesto",t:"Mensajes por licencia",num:1,fmt:dec}];
+  if(L.some(function(x){return x.g!=null}))cols.push({k:"g",t:"Consumo de uso",num:1,fmt:function(v){return v==null?"—":dinero(v,2)}});
+  else if(L.some(function(x){return x.cr!=null}))cols.push({k:"cr",t:"Créditos",num:1,fmt:function(v){return v==null?"—":dec(v)}});
+  if(L.some(function(x){return x.coste}))cols.push({k:"coste",t:"Licencias al mes",num:1,fmt:function(v){return dinero(v)}});
+  cols.push({k:"tt",t:"Tokens",num:1,fmt:compacto});
+  tabla("t-gru",cols,L,{orden:{k:"m",dir:-1},nombre:"grupos",click:function(f){Q.grupo=Q.grupo===f.nombre?null:f.nombre;pintarTab();var c=$("t-grup");if(c)c.scrollIntoView({behavior:"smooth",block:"nearest"})}});
+  var sel=L.filter(function(x){return x.nombre===Q.grupo})[0];
+  if(sel&&$("t-grup")){
+    var dinero2=K.T.g!=null?COL.g:K.T.cr!=null?COL.cr:null,pc=[COL.persona,COL.empresa,COL.estado,COL.m,COL.c,COL.dias];
+    if(dinero2)pc.push(dinero2);pc.push(COL.tt,COL.ultima);
+    tabla("t-grup",pc,sel.pers.map(function(p){var q=K.per[p.i]||{};return{i:p.i,nombre:p.nombre,email:p.email,empresa:p.empresa,estado:p.estado,m:q.m||0,c:q.c||0,tt:q.tt||0,cr:q.cr==null?null:q.cr,g:q.g==null?null:q.g,dias:q.dias||0,ultima:p.ultima,inactivo:p.inactivo}}),
+      {orden:{k:"m",dir:-1},nombre:"grupo-"+sel.nombre.toLowerCase().replace(/[^a-z0-9]+/g,"-"),vacio:"Este grupo no tiene a nadie con licencia.",click:function(f){abrirFicha(f.i)}});
+  }
 };
 
 /* Personas: dos subpestañas, quienes tienen licencia y quienes ya no la tienen */
