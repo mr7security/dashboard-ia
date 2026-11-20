@@ -148,7 +148,8 @@ h2{margin:0 0 3px;font-size:15.5px;font-weight:600}
 .vacio{font-size:13.5px;color:var(--suave);background:var(--panel2);border:1px dashed var(--borde);border-radius:6px;padding:14px}
 .vacio code{font-family:var(--mono);color:var(--oro2);font-size:12.5px}
 
-.tabla{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tabla{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--borde) transparent}
+.suave{color:var(--suave)}
 table{width:100%;border-collapse:collapse;font-size:13.5px}
 th{text-align:left;font-size:11.5px;font-weight:600;color:var(--suave);text-transform:uppercase;letter-spacing:.7px;padding:8px 10px;border-bottom:1px solid var(--borde);white-space:nowrap}
 th button{font:inherit;color:inherit;text-transform:inherit;letter-spacing:inherit;background:none;border:0;padding:0}
@@ -637,22 +638,22 @@ PEST.empresas=function(){
   var da=D.cfg.dias_activo,h=bloque("¿Qué empresas lo usan más?","Cada empresa se identifica por el dominio del correo · periodo del "+fechaLarga(F.desde)+" al "+fechaLarga(F.hasta),
     cifra({rot:"Empresas",val:num(con.length),desc:"tienen al menos una licencia de ChatGPT",tono:"oro"})+
     cifra({rot:"La que más lo usa",val:esc(masUso.nombre),texto:1,desc:num(masUso.m)+" mensajes en el periodo",comp:"<b>"+pct1(masUso.m,totM)+"</b> de todos los mensajes"})+
-    (mejor?cifra({rot:"Mejor aprovechamiento",val:esc(mejor.nombre),texto:1,desc:num(mejor.activos)+" de "+num(mejor.puestos)+" licencias en uso",tono:"ok",pct:pct(mejor.activos,mejor.puestos),comp:"<b>"+pct(mejor.activos,mejor.puestos)+" %</b> usadas en los últimos "+da+" días"}):"")+
-    (peor&&peor!==mejor?cifra({rot:"Peor aprovechamiento",val:esc(peor.nombre),texto:1,desc:num(peor.activos)+" de "+num(peor.puestos)+" licencias en uso",tono:"aviso",pct:pct(peor.activos,peor.puestos),color:"var(--aviso)",comp:"<b>"+pct(peor.activos,peor.puestos)+" %</b> usadas en los últimos "+da+" días"}):""));
+    (mejor?cifra({rot:"Donde más gente lo usa",val:esc(mejor.nombre),texto:1,desc:num(mejor.activos)+" de "+num(mejor.puestos)+" personas lo han usado en los últimos "+da+" días",tono:"ok",pct:pct(mejor.activos,mejor.puestos),comp:"<b>"+pct(mejor.activos,mejor.puestos)+" %</b> de sus licencias"}):"")+
+    (peor&&peor!==mejor?cifra({rot:"Donde menos gente lo usa",val:esc(peor.nombre),texto:1,desc:num(peor.activos)+" de "+num(peor.puestos)+" personas lo han usado en los últimos "+da+" días",tono:"aviso",pct:pct(peor.activos,peor.puestos),color:"var(--aviso)",comp:"<b>"+pct(peor.activos,peor.puestos)+" %</b> de sus licencias"}):""));
   return h+'<section class="fila dos">'+tarjeta("Mensajes por empresa","Mensajes enviados en el periodo.",'<div id="e-bar"></div>')+tarjeta("Licencias por empresa","Personas con licencia a día de hoy.",'<div id="e-pue"></div>')+'</section>'+
-    tarjeta("Detalle por empresa","Aprovechamiento es el porcentaje de licencias usadas en los últimos "+da+" días. Pulsa una fila para ver todo el panel solo con esa empresa.",'<div id="t-emp"></div>',btnCsv("t-emp"));
+    tarjeta("Detalle por empresa","«Lo usan ("+da+" días)» dice cuántas personas de la empresa han usado ChatGPT en los últimos "+da+" días, de todas las que tienen licencia. Por ejemplo, «15 de 16 · 94 %» significa que solo una persona no lo ha usado. Pulsa una fila para ver todo el panel solo con esa empresa.",'<div id="t-emp"></div>',btnCsv("t-emp"));
 };
 PEST.empresas.despues=function(){
   var lista=Object.keys(K.emp).map(function(e){var x=K.emp[e];x.adop=pct(x.activos,x.puestos);x.porPuesto=x.puestos?x.m/x.puestos:0;return x});
   $("e-bar").innerHTML=listaBarras(lista.slice().sort(function(a,b){return b.m-a.m}),"m","var(--oro2)",num);
   $("e-pue").innerHTML=listaBarras(lista.slice().sort(function(a,b){return b.puestos-a.puestos}),"puestos","var(--azul)",num);
-  var cols=[{k:"nombre",t:"Empresa"},{k:"puestos",t:"Licencias",num:1,fmt:num},{k:"activos",t:"En uso",num:1,fmt:num},
-    {k:"adop",t:"Aprovechamiento",num:1,html:function(f){return '<span class="mini"><i style="width:'+f.adop+'%"></i></span>'+f.adop+' %'}},
-    {k:"parados",t:"Paradas",num:1,fmt:num},{k:"sin_uso",t:"Sin estrenar",num:1,fmt:num},{k:"usan",t:"Personas con uso en el periodo",num:1,fmt:num},
-    {k:"m",t:"Mensajes",num:1,fmt:num},{k:"porPuesto",t:"Mensajes por licencia",num:1,fmt:dec}];
-  if(lista.some(function(x){return x.g!=null}))cols.push({k:"g",t:"Consumo de uso",num:1,fmt:function(v){return dinero(v,2)}});
+  var cols=[{k:"nombre",t:"Empresa"},{k:"puestos",t:"Personas",num:1,fmt:num},
+    {k:"adop",t:"Lo usan ("+D.cfg.dias_activo+" días)",num:1,html:function(f){return f.puestos?'<span class="mini"><i style="width:'+f.adop+'%;background:'+(f.adop>=75?"var(--ok)":f.adop>=40?"var(--aviso)":"var(--error)")+'"></i></span><b>'+num(f.activos)+'</b> de '+num(f.puestos)+' <span class="suave">· '+f.adop+' %</span>':"—"},csv:function(f){return f.activos+" de "+f.puestos+" ("+f.adop+" %)"}},
+    {k:"parados",t:"Paradas",num:1,fmt:num},{k:"sin_uso",t:"Sin estrenar",num:1,fmt:num},{k:"usan",t:"Con uso en periodo",num:1,fmt:num},
+    {k:"m",t:"Mensajes",num:1,fmt:num},{k:"porPuesto",t:"Mens./persona",num:1,fmt:dec}];
+  if(lista.some(function(x){return x.g!=null}))cols.push({k:"g",t:"Consumo",num:1,fmt:function(v){return dinero(v,2)}});
   else if(lista.some(function(x){return x.cr!=null}))cols.push({k:"cr",t:"Créditos",num:1,fmt:dec});
-  if(lista.some(function(x){return x.coste}))cols.push({k:"coste",t:"Licencias al mes",num:1,fmt:function(v){return dinero(v)}});
+  if(lista.some(function(x){return x.coste}))cols.push({k:"coste",t:"Licencias/mes",num:1,fmt:function(v){return dinero(v)}});
   cols.push({k:"tt",t:"Tokens",num:1,fmt:compacto});
   tabla("t-emp",cols,lista,{orden:{k:"m",dir:-1},nombre:"empresas",click:function(f){F.empresa=F.empresa===f.nombre?"":f.nombre;$("f-empresa").value=F.empresa;todo()}});
 };
@@ -692,11 +693,11 @@ PEST.grupos=function(){
   var h=bloque("¿Qué grupos lo usan más?","Grupos creados en el workspace de ChatGPT · periodo del "+fechaLarga(F.desde)+" al "+fechaLarga(F.hasta)+(F.empresa?" · "+esc(F.empresa):""),
     cifra({rot:"Grupos",val:num(reales.length),desc:"existen en el workspace"+(reales.length-con.length?" · "+num(reales.length-con.length)+" sin nadie":""),tono:"oro"})+
     (masUso&&masUso.m?cifra({rot:"El que más lo usa",val:esc(masUso.nombre),texto:1,desc:num(masUso.m)+" mensajes en el periodo",comp:"<b>"+pct1(masUso.m,K.T.m)+"</b> de todos los mensajes"}):"")+
-    (mejor?cifra({rot:"Mejor aprovechamiento",val:esc(mejor.nombre),texto:1,desc:num(mejor.activos)+" de "+num(mejor.puestos)+" licencias en uso",tono:"ok",pct:mejor.adop,comp:"<b>"+mejor.adop+" %</b> usadas en los últimos "+da+" días"}):"")+
-    (peor&&peor!==mejor?cifra({rot:"Peor aprovechamiento",val:esc(peor.nombre),texto:1,desc:num(peor.activos)+" de "+num(peor.puestos)+" licencias en uso",tono:"aviso",pct:peor.adop,color:"var(--aviso)",comp:"<b>"+peor.adop+" %</b> usadas en los últimos "+da+" días"}):"")+
+    (mejor?cifra({rot:"Donde más gente lo usa",val:esc(mejor.nombre),texto:1,desc:num(mejor.activos)+" de "+num(mejor.puestos)+" personas lo han usado en los últimos "+da+" días",tono:"ok",pct:mejor.adop,comp:"<b>"+mejor.adop+" %</b> de sus licencias"}):"")+
+    (peor&&peor!==mejor?cifra({rot:"Donde menos gente lo usa",val:esc(peor.nombre),texto:1,desc:num(peor.activos)+" de "+num(peor.puestos)+" personas lo han usado en los últimos "+da+" días",tono:"aviso",pct:peor.adop,color:"var(--aviso)",comp:"<b>"+peor.adop+" %</b> de sus licencias"}):"")+
     cifra({rot:"Sin grupo",val:num(sin?sin.puestos:0),desc:"personas con licencia que no están en ningún grupo",tono:sin?"aviso":"ok",comp:sin&&K.miembros.length?"<b>"+pct(sin.puestos,K.miembros.length)+" %</b> de las licencias":""}));
   h+='<section class="fila dos">'+tarjeta("Mensajes por grupo","Mensajes enviados en el periodo.",'<div id="g-bar"></div>')+tarjeta("Licencias por grupo","Personas con licencia a día de hoy.",'<div id="g-pue"></div>')+'</section>';
-  h+=tarjeta("Detalle por grupo","Aprovechamiento es el porcentaje de licencias usadas en los últimos "+da+" días. Pulsa una fila para ver quién forma el grupo.",'<div id="t-gru"></div>'+
+  h+=tarjeta("Detalle por grupo","«Lo usan ("+da+" días)» dice cuántas personas del grupo han usado ChatGPT en los últimos "+da+" días, de todas las que tienen licencia. Por ejemplo, «15 de 16 · 94 %» significa que solo una persona del grupo no lo ha usado. Pulsa una fila para ver quién forma el grupo.",'<div id="t-gru"></div>'+
     '<div class="pie-tabla">Una persona puede estar en varios grupos y cuenta en cada uno, así que la suma de los grupos puede superar el total del workspace. «Sin grupo» reúne a quien no está en ninguno.'+(Gr.fallos?" No se pudo leer la composición de "+num(Gr.fallos)+" grupo(s).":"")+'</div>',btnCsv("t-gru"));
   var sel=L.filter(function(x){return x.nombre===Q.grupo&&!x.sin})[0];
   if(sel)h+=tarjeta("Personas de «"+esc(sel.nombre)+"»",(sel.desc?esc(sel.desc)+" · ":"")+num(sel.puestos)+" personas. Pulsa una fila para ver la ficha completa.",'<div id="t-grup"></div>',btnCsv("t-grup"));
@@ -709,13 +710,13 @@ PEST.grupos.despues=function(){
   var L=filasGrupos();if(!L.length)return;
   $("g-bar").innerHTML=listaBarras(L.slice().sort(function(a,b){return b.m-a.m}),"m","var(--oro2)",num);
   $("g-pue").innerHTML=listaBarras(L.slice().sort(function(a,b){return b.puestos-a.puestos}),"puestos","var(--azul)",num);
-  var cols=[{k:"nombre",t:"Grupo",html:function(f){return (f.sin?'<i>'+esc(f.nombre)+'</i>':esc(f.nombre))+(f.desc&&!f.sin?'<span class="correo">'+esc(f.desc)+'</span>':"")}},{k:"puestos",t:"Licencias",num:1,fmt:num},{k:"activos",t:"En uso",num:1,fmt:num},
-    {k:"adop",t:"Aprovechamiento",num:1,html:function(f){return f.puestos?'<span class="mini"><i style="width:'+f.adop+'%"></i></span>'+f.adop+' %':"—"}},
-    {k:"parados",t:"Paradas",num:1,fmt:num},{k:"sin_uso",t:"Sin estrenar",num:1,fmt:num},{k:"usan",t:"Personas con uso en el periodo",num:1,fmt:num},
-    {k:"m",t:"Mensajes",num:1,fmt:num},{k:"porPuesto",t:"Mensajes por licencia",num:1,fmt:dec}];
-  if(L.some(function(x){return x.g!=null}))cols.push({k:"g",t:"Consumo de uso",num:1,fmt:function(v){return v==null?"—":dinero(v,2)}});
+  var cols=[{k:"nombre",t:"Grupo",html:function(f){return (f.sin?'<i>'+esc(f.nombre)+'</i>':esc(f.nombre))+(f.desc&&!f.sin?'<span class="correo">'+esc(f.desc)+'</span>':"")}},{k:"puestos",t:"Personas",num:1,fmt:num},
+    {k:"adop",t:"Lo usan ("+D.cfg.dias_activo+" días)",num:1,html:function(f){return f.puestos?'<span class="mini"><i style="width:'+f.adop+'%;background:'+(f.adop>=75?"var(--ok)":f.adop>=40?"var(--aviso)":"var(--error)")+'"></i></span><b>'+num(f.activos)+'</b> de '+num(f.puestos)+' <span class="suave">· '+f.adop+' %</span>':"—"},csv:function(f){return f.activos+" de "+f.puestos+" ("+f.adop+" %)"}},
+    {k:"parados",t:"Paradas",num:1,fmt:num},{k:"sin_uso",t:"Sin estrenar",num:1,fmt:num},{k:"usan",t:"Con uso en periodo",num:1,fmt:num},
+    {k:"m",t:"Mensajes",num:1,fmt:num},{k:"porPuesto",t:"Mens./persona",num:1,fmt:dec}];
+  if(L.some(function(x){return x.g!=null}))cols.push({k:"g",t:"Consumo",num:1,fmt:function(v){return v==null?"—":dinero(v,2)}});
   else if(L.some(function(x){return x.cr!=null}))cols.push({k:"cr",t:"Créditos",num:1,fmt:function(v){return v==null?"—":dec(v)}});
-  if(L.some(function(x){return x.coste}))cols.push({k:"coste",t:"Licencias al mes",num:1,fmt:function(v){return dinero(v)}});
+  if(L.some(function(x){return x.coste}))cols.push({k:"coste",t:"Licencias/mes",num:1,fmt:function(v){return dinero(v)}});
   cols.push({k:"tt",t:"Tokens",num:1,fmt:compacto});
   tabla("t-gru",cols,L,{orden:{k:"m",dir:-1},nombre:"grupos",click:function(f){if(f.sin){Q.grupo=null;var s0=$("t-grus");if(s0)s0.scrollIntoView({behavior:"smooth",block:"center"});return}
       Q.grupo=Q.grupo===f.nombre?null:f.nombre;pintarTab();var c=$("t-grup");if(c)c.scrollIntoView({behavior:"smooth",block:"nearest"})}});
