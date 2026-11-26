@@ -84,6 +84,12 @@ nav.pestanas button:hover{color:var(--texto)}
 .subida label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--suave);text-transform:uppercase;letter-spacing:.7px}
 .subida input{font:inherit;font-size:13.5px;text-transform:none;letter-spacing:0;color:var(--texto);background:var(--panel2);border:1px solid var(--borde);border-radius:4px;padding:7px 9px;max-width:100%}
 #f-informe{font:inherit}
+#dlg-admin{width:min(420px,calc((100vw - 24px)/var(--z,1)))}
+#dlg-admin h2{margin:0 0 6px;font-size:17px}
+.adm-campo{display:flex;flex-direction:column;gap:5px;margin-top:14px;font-size:12px;color:var(--suave);text-transform:uppercase;letter-spacing:.7px}
+.adm-campo input{font:inherit;font-size:14px;color:var(--texto);background:var(--panel2);border:1px solid var(--borde);border-radius:4px;padding:8px 10px}
+.adm-botones{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.btn.admin{color:var(--ok);border-color:var(--ok)}
 .pasos{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;font-size:13.5px;color:var(--suave)}
 .pasos b{color:var(--texto)}.pasos code,.pie-tabla code{font-family:var(--mono);color:var(--oro2);font-size:12.5px}
 td .largo{display:inline-block;min-width:240px;max-width:460px;white-space:normal;color:var(--suave)}
@@ -221,6 +227,7 @@ footer{font-size:12px;color:var(--tenue);text-align:center;padding-top:6px}
       <span class="chip demo" id="chip-demo" hidden>DATOS SIMULADOS</span>
       <span class="chip" id="chip-fecha">Cargando…</span>
       <button class="btn" id="btn-tema" type="button" aria-label="Cambiar entre tema claro y oscuro">Tema claro</button>
+      <button class="btn" id="btn-admin" type="button" hidden>Administrador</button>
       <button class="btn principal" id="btn" type="button">Actualizar</button>
       <div id="reloj-box"><div id="clock">--/--/---- --:--:--</div><div id="servidor"></div></div>
     </div>
@@ -274,6 +281,15 @@ footer{font-size:12px;color:var(--tenue);text-align:center;padding-top:6px}
 </div>
 
 <dialog id="ficha" aria-labelledby="ficha-nombre"></dialog>
+<dialog id="dlg-admin" aria-labelledby="adm-tit">
+  <form method="dialog" id="adm-form">
+    <h2 id="adm-tit">Modo administrador</h2>
+    <p class="ayuda">Solo el administrador puede subir y borrar ficheros. El resto de personas ve el panel igual, sin esos botones.</p>
+    <label class="adm-campo">Contraseña<input type="password" id="adm-clave" autocomplete="current-password" required></label>
+    <div id="adm-msg" class="pie-tabla" role="alert"></div>
+    <div class="adm-botones"><button class="btn" type="button" id="adm-cancelar">Cancelar</button><button class="btn principal" type="submit">Entrar</button></div>
+  </form>
+</dialog>
 
 <script>
 (function(){
@@ -1761,12 +1777,12 @@ PEST["l-empresas"].despues=function(){
 };
 
 PEST["l-informes"]=function(){
-  var C=D.claude,clave="";try{clave=sessionStorage.getItem("clave-subida")||""}catch(e){}
+  var C=D.claude;
   var h=tarjeta("Subir un fichero de Claude","El plan Team no tiene conexión automática: el panel se alimenta de los dos CSV que exporta claude.ai. El fichero se reconoce solo.",
-    (D.demo?vacio("En el modo de datos simulados no se pueden subir ficheros."):!C.subida?vacio("La subida no está activada. En el servidor, añade <code>DASH_CLAVE_SUBIDA=una-clave-larga</code> a <code>/etc/dashboard-ia.env</code> y reinicia con <code>sudo systemctl restart dashboard-ia</code>."):
+    (D.demo?vacio("En el modo de datos simulados no se pueden subir ficheros."):!C.subida?vacio("El modo administrador no está activado. En el servidor, añade <code>DASH_CLAVE_ADMIN=una-contraseña-larga</code> a <code>/etc/dashboard-ia.env</code> y reinicia con <code>sudo systemctl restart dashboard-ia</code>."):
+    !ADMIN.admin?vacio('Solo el administrador puede subir y borrar ficheros. <button class="btn" type="button" data-admin="1" style="margin-left:8px">Entrar como administrador</button>'):
     '<div class="subida"><label>Fichero CSV<input type="file" id="l-fichero" accept=".csv,text/csv"></label>'+
     '<label>Desde<input type="date" id="l-desde"></label><label>Hasta<input type="date" id="l-hasta"></label>'+
-    '<label>Clave de subida<input type="password" id="l-clave" autocomplete="off" value="'+esc(clave)+'"></label>'+
     '<button class="btn principal" type="button" id="l-subir">Subir</button></div><div id="l-msg" class="pie-tabla" role="status"></div>'+
     '<div class="pie-tabla">Las fechas solo hacen falta para el informe de gasto: pon las mismas que elegiste al exportarlo. Para la lista de miembros se ignoran. Un informe con las mismas fechas sustituye al anterior.</div>'));
   h+='<section class="fila dos">'+tarjeta("Informe de gasto","Uso y gasto por persona y modelo. Conviene subir uno al mes.",
@@ -1782,20 +1798,42 @@ PEST["l-informes"].despues=function(){
   if(C.miembros)filas.push({id:"miembros",tipo:"Lista de miembros",periodo:"—",orden:"9",n:C.personas.filter(function(p){return p.miembro}).length,subido:C.miembros.subido,nombre:C.miembros.nombre});
   tabla("t-linf",[{k:"tipo",t:"Tipo"},{k:"orden",t:"Periodo",html:function(f){return esc(f.periodo)}},{k:"n",t:"Filas",num:1,fmt:num},
     {k:"subido",t:"Subido",num:1,fmt:function(v){return v?fechaLarga(v)+" "+v.slice(11,16):"—"}},{k:"nombre",t:"Fichero"},
-    {k:"id",t:"",html:function(f){return C.subida&&!D.demo?'<button class="btn" type="button" data-borrar="'+esc(f.id)+'">Borrar</button>':""}}],filas,{orden:{k:"orden",dir:-1},vacio:"Todavía no se ha subido ningún fichero."});
+    {k:"id",t:"",html:function(f){return ADMIN.admin&&!D.demo?'<button class="btn" type="button" data-borrar="'+esc(f.id)+'">Borrar</button>':""}}],filas,{orden:{k:"orden",dir:-1},vacio:"Todavía no se ha subido ningún fichero."});
 };
 function clMsg(txt,bien){var m=$("l-msg");if(m){m.textContent=txt;m.style.color=bien?"var(--ok)":"var(--error)"}}
 function clEnviar(ruta,cuerpo){
-  var clave=($("l-clave")||{}).value||"";if(!clave){clMsg("Escribe la clave de subida.");return Promise.resolve()}
-  try{sessionStorage.setItem("clave-subida",clave)}catch(e){}
-  cuerpo.clave=clave;clMsg("Enviando…",true);
+  clMsg("Enviando…",true);
   return fetch(ruta,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(cuerpo)}).then(function(r){return r.json()}).then(function(j){
+    if(j.admin===false){ADMIN.admin=false;pintarAdmin();pintarTab();return}   /* la sesión ha caducado */
     if(!j.ok){clMsg(j.mensaje||"No se pudo completar.");return}
     var txt=j.mensaje;CL.inf=null;TAB=TABM.claude="l-informes";return cargar().then(function(){clMsg(txt,true)});
   }).catch(function(e){clMsg("No se pudo conectar con el servidor ("+e.message+").")});
 }
+/* Modo administrador: el servidor guarda la sesión en una cookie que el navegador no deja leer a la página. */
+var ADMIN={admin:false,activo:false};
+function pintarAdmin(){
+  var b=$("btn-admin");b.hidden=!ADMIN.activo;b.textContent=ADMIN.admin?"Administrador · Salir":"Administrador";b.classList.toggle("admin",ADMIN.admin);
+  b.setAttribute("aria-label",ADMIN.admin?"Salir del modo administrador":"Entrar en el modo administrador");
+}
+function estadoAdmin(){return fetch("api/admin/estado",{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){var antes=ADMIN.admin;ADMIN=j;pintarAdmin();if(antes!==j.admin&&D&&MODO==="claude")pintarTab()}).catch(function(){})}
+function abrirAdmin(){var d=$("dlg-admin");$("adm-clave").value="";$("adm-msg").textContent="";if(d.showModal)d.showModal();else d.setAttribute("open","");$("adm-clave").focus()}
+function cerrarAdmin(){var d=$("dlg-admin");if(d.close)d.close();else d.removeAttribute("open")}
+$("btn-admin").addEventListener("click",function(){
+  if(!ADMIN.admin){abrirAdmin();return}
+  fetch("api/admin/salir",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}).then(function(){ADMIN.admin=false;pintarAdmin();if(D)pintarTab()}).catch(function(){});
+});
+$("adm-cancelar").addEventListener("click",cerrarAdmin);
+$("adm-form").addEventListener("submit",function(e){
+  e.preventDefault();var m=$("adm-msg");m.style.color="var(--error)";m.textContent="";
+  fetch("api/admin/entrar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({clave:$("adm-clave").value})}).then(function(r){return r.json()}).then(function(j){
+    if(!j.ok){m.textContent=j.mensaje||"No se pudo entrar.";$("adm-clave").select();return}
+    ADMIN.admin=true;pintarAdmin();cerrarAdmin();if(D)pintarTab();
+  }).catch(function(x){m.textContent="No se pudo conectar con el servidor ("+x.message+")."});
+});
+estadoAdmin();setInterval(estadoAdmin,5*60*1000);
 document.addEventListener("click",function(e){
   var b;
+  if(e.target.closest("[data-admin]")){abrirAdmin();return}
   if(e.target.id==="l-subir"){
     var f=$("l-fichero").files[0];if(!f){clMsg("Elige un fichero CSV.");return}
     if(f.size>6e6){clMsg("El fichero es demasiado grande.");return}
