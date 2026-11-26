@@ -71,6 +71,20 @@ en `data/copilot.json` para ir formando el histórico diario. Si el tenant ocult
 nombres en los informes, hay que desactivarlo en el Centro de administración de
 Microsoft 365 (Configuración de la organización → Informes).
 
+## Apartado Claude, plan Team (opcional)
+
+El plan Team de Claude no tiene API de uso, así que este apartado se alimenta de
+los dos CSV que exporta claude.ai y que se suben desde la pestaña **Informes**:
+
+- **Lista de miembros** (configuración de la organización): quién tiene asiento y de qué tipo.
+- **Informe de gasto** (Analytics → *Export spend report*): peticiones, tokens y gasto
+  por persona, producto y modelo. Viene sumado para el periodo elegido, sin detalle
+  por día, y llega hasta 90 días atrás. Al subirlo se indican sus fechas.
+
+Para activar la subida, define `DASH_CLAVE_SUBIDA` en `/etc/dashboard-ia.env`; el panel
+la pide en cada subida o borrado. El precio de cada tipo de asiento va en
+`precio_claude` de `config.json`. Lo subido se guarda en `data/claude.json`.
+
 ## Configuración (`config.json`)
 
 - `puerto`, `escucha`: dónde escucha el servidor (por defecto `0.0.0.0:8091`).
