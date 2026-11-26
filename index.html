@@ -79,7 +79,11 @@ nav.pestanas button:hover{color:var(--texto)}
 .modo button{font-size:13.5px;font-weight:600;color:var(--suave);background:transparent;border:0;border-radius:999px;padding:7px 18px}
 .modo button:hover{color:var(--texto)}
 .modo button[aria-selected=true]{color:var(--sobre-oro);background:var(--oro)}
-.grupo[hidden]{display:none}
+.grupo[hidden]{display:none!important}
+.subida{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.subida label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--suave);text-transform:uppercase;letter-spacing:.7px}
+.subida input{font:inherit;font-size:13.5px;text-transform:none;letter-spacing:0;color:var(--texto);background:var(--panel2);border:1px solid var(--borde);border-radius:4px;padding:7px 9px;max-width:100%}
+#f-informe{font:inherit}
 .pasos{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;font-size:13.5px;color:var(--suave)}
 .pasos b{color:var(--texto)}.pasos code,.pie-tabla code{font-family:var(--mono);color:var(--oro2);font-size:12.5px}
 td .largo{display:inline-block;min-width:240px;max-width:460px;white-space:normal;color:var(--suave)}
@@ -210,6 +214,7 @@ footer{font-size:12px;color:var(--tenue);text-align:center;padding-top:6px}
       <div class="modo" id="modo" role="tablist" aria-label="Producto">
         <button type="button" role="tab" data-modo="chatgpt" aria-selected="true">ChatGPT</button>
         <button type="button" role="tab" data-modo="copilot" aria-selected="false">Copilot</button>
+        <button type="button" role="tab" data-modo="claude" aria-selected="false">Claude</button>
       </div>
     </div>
     <div class="acciones">
@@ -236,6 +241,10 @@ footer{font-size:12px;color:var(--tenue);text-align:center;padding-top:6px}
       <input type="date" id="f-desde" aria-label="Desde">
       <span style="color:var(--tenue)">a</span>
       <input type="date" id="f-hasta" aria-label="Hasta">
+    </div>
+    <div class="grupo" id="grupo-informe" hidden>
+      <label for="f-informe">Informe</label>
+      <select id="f-informe"></select>
     </div>
     <div class="grupo">
       <label for="f-empresa">Empresa</label>
@@ -1264,6 +1273,8 @@ function pintarTab(){
   var cont=$("contenido");
   Array.prototype.forEach.call($("pestanas").children,function(b){var s=b.getAttribute("data-tab")===TAB;b.setAttribute("aria-selected",s?"true":"false");b.tabIndex=s?0:-1});
   if(!D)return;
+  if(MODO==="claude"){var C9=D.claude||{estado:"sin_datos"};if(!D.claude)D.claude={estado:"sin_datos",personas:[],informes:[],productos:[],modelos:[],filas:[],miembros:null,subida:false};
+    var fl=C9.estado==="sin_datos"?PEST["l-informes"]:(PEST[TAB]||PEST["l-resumen"]);cont.innerHTML=(fl===PEST["l-informes"]?"":clAvisos())+fl();if(fl.despues)fl.despues();return}
   if(MODO==="copilot"){var g=cpGuardia(),fc=PEST[TAB]||PEST["c-resumen"];cont.innerHTML=g||cpAvisos()+fc();if(!g&&fc.despues)fc.despues();return}
   if(D.fuente.estado!=="ok"&&!D.uso.length){cont.innerHTML=vacio(esc(D.fuente.mensaje||"Sin datos."));return}
   if(!D.dias.length&&TAB!=="licencias"&&TAB!=="resumen"&&TAB!=="factura"&&TAB!=="estimador"&&TAB!=="limites"){cont.innerHTML=vacio("La API todavía no ha devuelto registros de uso.");return}
@@ -1274,7 +1285,8 @@ function pintarTab(){
 function todo(){
   if(!D)return;
   K=calcular();
-  $("fuente").hidden=MODO==="copilot"||!FU_MAL;
+  $("fuente").hidden=MODO!=="chatgpt"||!FU_MAL;
+  if(MODO==="claude"){clInformes();var k9=D.claude&&D.claude.informes.length?clCalc():null;$("nota-rango").textContent=k9&&k9.I?k9.dias+" días · subido el "+fechaLarga(k9.I.subido):"";pintarTab();return}
   if(MODO==="copilot"){
     Array.prototype.forEach.call(document.querySelectorAll("[data-rango]"),function(b){b.classList.toggle("activo",String(CP.dias)===b.getAttribute("data-rango"))});
     var C=D.copilot;$("nota-rango").textContent=C&&C.actualizado?"Último informe de Microsoft: "+fechaLarga(C.actualizado):"";
@@ -1296,7 +1308,7 @@ function pintar(){
   FU_MAL=!!mal;fu.hidden=!mal;
   if(mal)fu.innerHTML='<span class="punto '+esc(D.fuente.estado)+'"></span><div><b>Fuente de datos</b><br>'+esc([D.fuente.mensaje].concat(D.fuente.avisos||[]).filter(Boolean).join(" · "))+(D.uso.length&&D.fuente.estado!=="ok"?" Se muestra lo último guardado.":"")+'</div>';
   $("pie").textContent="SGP — Departamento de IT · se refresca cada "+D.refresco_minutos+" min"+(D.demo?" · datos simulados":"");
-  if(MODO==="copilot")empresasCopilot();
+  if(MODO!=="chatgpt")empresasCopilot();
   todo();
 }
 function cargar(ruta){
@@ -1309,29 +1321,29 @@ function cargar(ruta){
    Microsoft 365 Copilot. Microsoft solo informa de la última fecha en que
    cada persona usó Copilot en cada aplicación: no hay mensajes ni consumo.
    ===================================================================== */
-var MODO="chatgpt",TABM={chatgpt:"resumen",copilot:"c-resumen"},CP={dias:30,buscar:"",estado:""},NAVS={chatgpt:$("pestanas").innerHTML,
-  copilot:[["c-resumen","Resumen"],["c-personas","Personas"],["c-apps","Aplicaciones"],["c-empresas","Empresas"],["c-tendencias","Tendencias"],["c-licencias","Licencias"]].map(function(t){return '<button role="tab" data-tab="'+t[0]+'">'+t[1]+'</button>'}).join("")};
+var MODO="chatgpt",TABM={chatgpt:"resumen",copilot:"c-resumen",claude:"l-resumen"},TITULO={chatgpt:["ChatGPT Enterprise","Licencias, uso y coste del workspace"],copilot:["Microsoft 365 Copilot","Licencias y uso de Copilot en Microsoft 365"],claude:["Claude Team","Asientos, uso y gasto del plan Team"]},CP={dias:30,buscar:"",estado:""},NAVS={chatgpt:$("pestanas").innerHTML,
+  copilot:[["c-resumen","Resumen"],["c-personas","Personas"],["c-apps","Aplicaciones"],["c-empresas","Empresas"],["c-tendencias","Tendencias"],["c-licencias","Licencias"]].map(function(t){return '<button role="tab" data-tab="'+t[0]+'">'+t[1]+'</button>'}).join(""),
+  claude:[["l-resumen","Resumen"],["l-personas","Personas"],["l-modelos","Modelos"],["l-productos","Productos"],["l-empresas","Empresas"],["l-informes","Informes"]].map(function(t){return '<button role="tab" data-tab="'+t[0]+'">'+t[1]+'</button>'}).join("")};
 var CP_APP={copilotChat:"Chat de Copilot, en la web, en Teams o en la aplicación de Microsoft 365: preguntas generales y sobre los documentos y correos de la empresa.",
   microsoftTeams:"Resumir reuniones y chats, sacar el acta y las tareas pendientes.",word:"Redactar, resumir y reescribir documentos.",
   excel:"Analizar tablas, crear fórmulas y gráficos.",powerPoint:"Crear una presentación a partir de un texto o un documento, y resumirla.",
   outlook:"Resumir hilos de correo y redactar respuestas.",oneNote:"Resumir y ordenar notas.",loop:"Crear y resumir contenido en páginas compartidas de Loop."};
 var CP_COLOR=["var(--oro2)","var(--azul)","var(--verde)","var(--lila)","var(--rosa)","var(--ok)","var(--aviso)","var(--tenue)"];
 function empresasCopilot(){
-  var C=D&&D.copilot,emp={};((C&&C.personas)||[]).forEach(function(p){emp[p.empresa]=1});
+  var C=D&&(MODO==="claude"?D.claude:D.copilot),emp={};((C&&C.personas)||[]).forEach(function(p){emp[p.empresa]=1});
   if(F.empresa&&!emp[F.empresa])F.empresa="";
   $("f-empresa").innerHTML='<option value="">Todas</option>'+Object.keys(emp).sort(function(a,b){return a.localeCompare(b,"es")}).map(function(e){return '<option'+(e===F.empresa?" selected":"")+'>'+esc(e)+'</option>'}).join("");
 }
 function ponerModo(m){
-  MODO=m==="copilot"?"copilot":"chatgpt";TAB=TABM[MODO];
+  MODO=TABM[m]?m:"chatgpt";TAB=TABM[MODO];
   $("pestanas").innerHTML=NAVS[MODO];
   Array.prototype.forEach.call($("modo").children,function(b){b.setAttribute("aria-selected",b.getAttribute("data-modo")===MODO?"true":"false")});
-  $("titulo").textContent=MODO==="copilot"?"Microsoft 365 Copilot":"ChatGPT Enterprise";
-  $("subtitulo").textContent=MODO==="copilot"?"Licencias y uso de Copilot en Microsoft 365":"Licencias, uso y coste del workspace";
-  $("grupo-fechas").hidden=MODO==="copilot";
-  document.title=(MODO==="copilot"?"Copilot":"ChatGPT Enterprise")+" · SGP";
+  $("titulo").textContent=TITULO[MODO][0];$("subtitulo").textContent=TITULO[MODO][1];
+  $("grupo-fechas").hidden=MODO!=="chatgpt";$("rangos").hidden=MODO==="claude";$("grupo-informe").hidden=MODO!=="claude";
+  document.title=TITULO[MODO][0]+" · SGP";
   try{history.replaceState(null,"","#"+TAB)}catch(x){}
   if(!D){pintarTab();return}
-  if(MODO==="copilot")empresasCopilot();else{F.empresa="";preparar()}
+  if(MODO!=="chatgpt")empresasCopilot();else{F.empresa="";preparar()}
   todo();
 }
 $("modo").addEventListener("click",function(e){var b=e.target.closest("[data-modo]");if(b&&b.getAttribute("data-modo")!==MODO)ponerModo(b.getAttribute("data-modo"))});
@@ -1554,6 +1566,257 @@ PEST["c-licencias"].despues=function(){
 document.addEventListener("input",function(e){if(e.target.id==="c-buscar"){CP.buscar=e.target.value;PEST["c-personas"].despues()}});
 document.addEventListener("change",function(e){if(e.target.id==="c-estado"){CP.estado=e.target.value;PEST["c-personas"].despues()}});
 
+
+/* =====================================================================
+   Claude (plan Team). No hay API: se cargan los CSV que exporta claude.ai,
+   la lista de miembros y el informe de gasto, desde la pestaña Informes.
+   El informe viene sumado para todo su periodo, sin detalle por día.
+   ===================================================================== */
+var CL={inf:null,buscar:"",estado:""};
+var CL_PROD=[["code","Claude Code","Programar con Claude desde el terminal, el editor o la web.","var(--verde)"],
+  ["cowork","Cowork","Tareas largas que Claude hace por su cuenta: informes, análisis, documentos.","var(--lila)"],
+  ["office","Office Agents","Claude dentro de Excel, Word, PowerPoint y Outlook.","var(--azul)"],
+  ["design","Claude Design","Maquetas, pantallas y piezas visuales.","var(--rosa)"],
+  ["chrome","Claude in Chrome","Claude navegando y actuando en páginas web desde la extensión de Chrome.","var(--aviso)"],
+  ["chat","Chat","Conversaciones en claude.ai y en las aplicaciones de escritorio y móvil.","var(--oro2)"]];
+function clProd(nombre){var n=String(nombre).toLowerCase();for(var i=0;i<CL_PROD.length;i++)if(n.indexOf(CL_PROD[i][0])>=0)return CL_PROD[i];return[n,nombre,"Otro producto de Claude.","var(--tenue)"]}
+var CL_ESTADO={activo:["activo","Con uso"],sin:["parado","Sin uso en el informe"],fuera:["ex","No está en la lista"]};
+function clPrecio(p){var pr=D.cfg.precio_claude||{},k=String(p.asiento||"").toLowerCase();return +(pr[k]!=null?pr[k]:pr.standard)||0}
+function clUsd(v){return v==null?null:v*(D.cfg.usd_a_moneda||1)}
+function clCalc(){
+  var C=D.claude,n=C.informes.length,inf=CL.inf!=null&&CL.inf<n?CL.inf:n-1;
+  var I=inf>=0?C.informes[inf]:null,dias=I?difDias(I.hasta,I.desde)+1:0;
+  var per=C.personas.map(function(p,i){return{i:i,nombre:p.nombre,email:p.email,empresa:p.empresa,miembro:p.miembro,rol:p.rol||"—",asiento:p.asiento||"—",
+    req:0,ti:0,to:0,tt:0,neto:null,bruto:null,cr:null,web:null,prods:{},mods:{}}});
+  var vis=function(i){return !F.empresa||per[i].empresa===F.empresa};
+  var k={C:C,inf:inf,I:I,dias:dias,T:{req:0,ti:0,to:0,tt:0,neto:null,bruto:null,cr:null,web:null},prod:{},mod:{}};
+  C.filas.forEach(function(r){
+    if(r[0]!==inf||!vis(r[1]))return;
+    var p=per[r[1]],tt=r[5]+r[6],ne=clUsd(r[7]),br=clUsd(r[8]);
+    [p,k.T,k.prod[r[2]]||(k.prod[r[2]]={i:r[2],req:0,ti:0,to:0,tt:0,neto:null,bruto:null,pers:{}}),k.mod[r[3]]||(k.mod[r[3]]={i:r[3],req:0,ti:0,to:0,tt:0,neto:null,bruto:null,pers:{}})].forEach(function(x){
+      x.req+=r[4];x.ti+=r[5];x.to+=r[6];x.tt+=tt;x.neto=suma(x.neto,ne);x.bruto=suma(x.bruto,br);x.cr=suma(x.cr,r[10]);x.web=suma(x.web,r[12]);if(x.pers)x.pers[r[1]]=1});
+    p.prods[r[2]]=(p.prods[r[2]]||0)+r[4];p.mods[r[3]]=(p.mods[r[3]]||0)+tt;
+  });
+  var fueraInf={};((I&&I.fuera)||[]).forEach(function(i){fueraInf[i]=1});
+  per.forEach(function(p){
+    p.estado=p.req||p.tt?(p.miembro||(!C.miembros&&!fueraInf[p.i])?"activo":"fuera"):"sin";p.cache=p.ti&&p.cr!=null?p.cr/p.ti*100:null;
+    var m=Object.keys(p.mods).sort(function(a,b){return p.mods[b]-p.mods[a]})[0];p.modelo=m!=null?C.modelos[m].nombre:"—";
+    p.nprod=Object.keys(p.prods).length;p.productos=Object.keys(p.prods).sort(function(a,b){return p.prods[b]-p.prods[a]}).map(function(x){return clProd(C.productos[x])[1]}).join(", ")||"—";
+    p.precio=p.miembro?clPrecio(p):0;
+  });
+  k.P=per.filter(function(p){return vis(p.i)&&(p.miembro||p.estado!=="sin")});
+  k.miembros=k.P.filter(function(p){return p.miembro});
+  k.usan=k.P.filter(function(p){return p.estado!=="sin"});
+  k.sinUso=k.miembros.filter(function(p){return p.estado==="sin"});
+  k.fuera=k.P.filter(function(p){return p.estado==="fuera"});
+  k.costeMes=k.miembros.reduce(function(a,p){return a+p.precio},0);
+  k.inmovil=k.sinUso.reduce(function(a,p){return a+p.precio},0);
+  k.tipos={};k.miembros.forEach(function(p){k.tipos[p.asiento]=(k.tipos[p.asiento]||0)+1});
+  k.prods=Object.keys(k.prod).map(function(i){var x=k.prod[i],d=clProd(C.productos[i]);x.nombre=d[1];x.original=C.productos[i];x.desc=d[2];x.color=d[3];x.npers=Object.keys(x.pers).length;return x});
+  k.mods=Object.keys(k.mod).map(function(i){var x=k.mod[i];x.nombre=C.modelos[i].nombre;x.familia=C.modelos[i].familia||"—";x.npers=Object.keys(x.pers).length;return x});
+  k.hayGasto=k.T.neto!=null||k.T.bruto!=null;k.hayBruto=k.T.bruto!=null&&Math.abs((k.T.bruto||0)-(k.T.neto||0))>0.005;
+  return k;
+}
+function clInformes(){
+  var C=D.claude,sel=$("f-informe");if(!sel)return;
+  sel.innerHTML=C&&C.informes.length?C.informes.map(function(x,i){return '<option value="'+i+'">'+fechaLarga(x.desde)+' a '+fechaLarga(x.hasta)+'</option>'}).reverse().join(""):'<option value="">Ninguno</option>';
+  if(C&&C.informes.length)sel.value=String(CL.inf!=null&&CL.inf<C.informes.length?CL.inf:C.informes.length-1);
+}
+function clAvisos(k){
+  var C=D.claude,h="";
+  if(!C.miembros)h+='<div class="fuente"><span class="punto aviso"></span><div><b>Falta la lista de miembros</b><br>Sin ella no se sabe cuántos asientos hay ni quién no lo usa. Súbela en la pestaña Informes.</div></div>';
+  if(!C.informes.length)h+='<div class="fuente"><span class="punto aviso"></span><div><b>Falta un informe de gasto</b><br>Se ve quién tiene asiento, pero no el uso. Sube un informe en la pestaña Informes.</div></div>';
+  return h;
+}
+function clPeriodo(k){return k.I?"Informe del "+fechaLarga(k.I.desde)+" al "+fechaLarga(k.I.hasta)+" · "+k.dias+" días":"Sin informe de gasto"}
+function clNota(){return '<div class="pie-tabla">Datos del informe de gasto exportado de claude.ai, que viene sumado para todo el periodo y sin detalle por día. Los tokens de entrada son todo lo que Claude lee en cada petición; la mayor parte se relee de la caché (la conversación y los ficheros ya enviados), por eso la cifra es tan alta. Los de salida son lo que Claude escribe, incluido el razonamiento. El «gasto extra» es el uso que se factura aparte por superar lo incluido en el asiento; el resto del uso sale a 0 porque ya lo cubre la cuota.</div>'}
+
+PEST["l-resumen"]=function(){
+  var k=clCalc(),C=k.C,nm=k.miembros.length,con=k.miembros.filter(function(p){return p.estado==="activo"}).length;
+  var tipos=Object.keys(k.tipos).sort().map(function(t){return num(k.tipos[t])+" "+esc(t)}).join(" · ");
+  var h=bloque("¿Se están usando los asientos?",clPeriodo(k)+(F.empresa?" · "+esc(F.empresa):""),
+    cifra({rot:"Asientos",val:C.miembros?num(nm):"—",desc:C.miembros?(tipos||"personas en la lista de miembros"):"sube la lista de miembros para saberlo",tono:"oro",ayuda:"Personas de la lista de miembros exportada de claude.ai."})+
+    cifra({rot:"Con uso",val:num(con),desc:"han usado Claude en el periodo del informe",tono:"ok",pct:nm?pct(con,nm):null,comp:nm?"<b>"+pct(con,nm)+" %</b> de los asientos":""})+
+    cifra({rot:"Sin uso",val:C.miembros?num(k.sinUso.length):"—",desc:"tienen asiento y no aparecen en el informe",tono:k.sinUso.length?"aviso":"",pct:nm?pct(k.sinUso.length,nm):null,color:"var(--aviso)",comp:nm?"<b>"+pct(k.sinUso.length,nm)+" %</b> de los asientos":""})+
+    cifra({rot:"Fuera de la lista",val:num(k.fuera.length),desc:"tienen uso y no están en la lista de miembros",tono:k.fuera.length?"mal":"",ayuda:"Suelen ser personas que se han dado de baja después del periodo, o una lista de miembros antigua."}));
+  var lab=Math.max(1,Math.round(k.dias*5/7)),topM=k.mods.slice().sort(function(a,b){return b.tt-a.tt})[0];
+  h+=bloque("¿Cuánto se ha usado?","En los "+k.dias+" días del informe",
+    cifra({rot:"Peticiones",val:num(k.T.req),desc:"mensajes y llamadas a Claude",comp:k.usan.length?"unas <b>"+dec(k.T.req/k.usan.length/lab)+"</b> por persona y día laborable":""})+
+    cifra({rot:"Tokens",val:compacto(k.T.tt),desc:compacto(k.T.ti)+" de entrada · "+compacto(k.T.to)+" de salida",comp:k.T.cr!=null&&k.T.ti?"<b>"+pct(k.T.cr,k.T.ti)+" %</b> de la entrada se relee de la caché":"",ayuda:"Los tokens miden cuánto texto lee y escribe Claude. En conversaciones largas y en Claude Code, casi toda la entrada es contexto que ya se había enviado y se relee de la caché."})+
+    cifra({rot:"Peticiones por persona",val:k.usan.length?num(k.T.req/k.usan.length):"—",desc:"de media entre quienes lo usan"})+
+    (topM?cifra({rot:"Modelo más usado",val:esc(topM.nombre),texto:1,desc:compacto(topM.tt)+" tokens",comp:"<b>"+pct1(topM.tt,k.T.tt)+"</b> de todos los tokens"}):""));
+  if(k.costeMes||k.hayGasto)h+=bloque("¿Cuánto cuesta?","Importes en "+esc(D.cfg.moneda||"USD")+" · los asientos son una cuota fija; el gasto extra es el uso que supera lo incluido en ellos",
+    (k.costeMes?cifra({rot:"Asientos al mes",val:dinero(k.costeMes),desc:num(nm)+" asientos · "+dinero(k.costeMes*12)+" al año",tono:"oro"}):"")+
+    (k.hayGasto?cifra({rot:"Gasto extra",val:dinero(k.T.neto,2),desc:"uso facturado aparte de los asientos en el periodo",tono:k.T.neto>0?"aviso":"",comp:k.hayBruto?"<b>"+dinero(k.T.bruto,2)+"</b> antes de descuentos y créditos":num(k.P.filter(function(p){return p.neto>0}).length)+" personas han superado lo incluido en su asiento",ayuda:"Lo que se factura por el uso que supera lo incluido en el asiento, después de descuentos y créditos."}):"")+
+    (k.costeMes&&con?cifra({rot:"Coste por persona activa",val:dinero(k.costeMes/con,2),desc:"al mes, repartiendo los asientos entre quienes lo usan"}):"")+
+    (k.costeMes?cifra({rot:"Asientos sin aprovechar",val:dinero(k.inmovil),desc:"al mes en "+num(k.sinUso.length)+(k.sinUso.length===1?" asiento":" asientos")+" sin uso en el informe",tono:k.inmovil?"mal":"ok"}):""));
+  var al=[];
+  if(k.sinUso.length)al.push(["var(--aviso)","<b>"+num(k.sinUso.length)+"</b> "+(k.sinUso.length===1?"asiento":"asientos")+" sin uso en el periodo del informe: "+esc(k.sinUso.slice(0,4).map(function(p){return p.nombre}).join(", "))+(k.sinUso.length>4?"…":"")+"."]);
+  var prem=k.sinUso.filter(function(p){return /premium/i.test(p.asiento)}).length;if(prem)al.push(["var(--error)","<b>"+num(prem)+"</b> de ellos son asientos Premium, los más caros."]);
+  var premPoco=k.miembros.filter(function(p){return /premium/i.test(p.asiento)&&p.estado==="activo"}).sort(function(a,b){return a.tt-b.tt})[0],stdMucho=k.miembros.filter(function(p){return /standard/i.test(p.asiento)}).sort(function(a,b){return b.tt-a.tt})[0];
+  if(premPoco&&stdMucho&&stdMucho.tt>premPoco.tt*3)al.push(["var(--azul)","<b>"+esc(stdMucho.nombre)+"</b> (Standard) usa mucho más que <b>"+esc(premPoco.nombre)+"</b> (Premium): puede convenir intercambiar los asientos."]);
+  if(k.fuera.length)al.push(["var(--aviso)","<b>"+num(k.fuera.length)+"</b> personas con uso no están en la lista de miembros."]);
+  if(k.I&&difDias(D.hoy,k.I.hasta)>35)al.push(["var(--tenue)","El informe más reciente termina el "+fechaLarga(k.I.hasta)+". Conviene subir uno nuevo."]);
+  if(!al.length)al.push(["var(--ok)","Sin incidencias que destacar."]);
+  h+='<section class="fila">'+tarjeta("Para qué se usa","Peticiones en cada producto de Claude.",k.prods.length?reparto(k.prods.slice().sort(function(a,b){return b.req-a.req}).map(function(x){return[x.nombre,x.req,x.color]}),k.T.req):vacio("Sin uso en este informe."))+
+    tarjeta("A destacar","Avisos calculados con los filtros actuales.",'<ul class="alertas">'+al.map(function(a){return '<li><i style="background:'+a[0]+'"></i><span>'+a[1]+'</span></li>'}).join("")+'</ul>')+
+    tarjeta("Quién más lo usa","Tokens de salida: lo que Claude ha escrito para cada persona.",'<div id="l-top"></div>')+'</section>';
+  if(C.informes.length>1)h+=tarjeta("Evolución entre informes","Tokens al día en cada informe subido, para poder comparar periodos de distinta duración."+(F.empresa?" Solo "+esc(F.empresa)+".":""),'<div id="l-g1"></div>');
+  return h+clNota();
+};
+PEST["l-resumen"].despues=function(){
+  var k=clCalc(),C=k.C;
+  $("l-top").innerHTML=listaBarras(k.usan.slice().sort(function(a,b){return b.to-a.to}),"to","var(--oro2)",compacto);
+  if(!$("l-g1"))return;
+  var tot=C.informes.map(function(){return 0}),ok=function(i){return !F.empresa||C.personas[i].empresa===F.empresa};
+  C.filas.forEach(function(r){if(ok(r[1]))tot[r[0]]+=r[5]+r[6]});
+  barras($("l-g1"),C.informes.map(function(x){return fechaCorta(x.desde)+"–"+fechaCorta(x.hasta)}),C.informes.map(function(x){return fechaLarga(x.desde)+" a "+fechaLarga(x.hasta)}),
+    C.informes.map(function(x,i){return Math.round(tot[i]/(difDias(x.hasta,x.desde)+1))}),"var(--oro2)","Tokens al día en cada informe");
+};
+
+PEST["l-personas"]=function(){
+  var k=clCalc();
+  var herr='<input type="search" id="l-buscar" placeholder="Buscar nombre o email…" aria-label="Buscar" value="'+esc(CL.buscar)+'">'+
+    '<select id="l-estado" aria-label="Estado"><option value="">Todos los estados</option>'+["activo","sin","fuera"].map(function(e){return '<option value="'+e+'"'+(CL.estado===e?" selected":"")+'>'+CL_ESTADO[e][1]+'</option>'}).join("")+'</select>'+btnCsv("t-lper");
+  return tarjeta("Personas",'<span id="lper-n"></span> '+clPeriodo(k)+'. <b>Con uso</b>: aparece en el informe · <b>Sin uso en el informe</b>: tiene asiento y no lo ha usado en ese periodo · <b>No está en la lista</b>: tiene uso pero no figura como miembro.','<div id="t-lper"></div>'+clNota(),herr);
+};
+PEST["l-personas"].despues=function(){
+  var k=clCalc(),q=CL.buscar.trim().toLowerCase();
+  var gpt={},cop={};D.personas.forEach(function(p){if(p.miembro)gpt[p.email]=1});((D.copilot&&D.copilot.personas)||[]).forEach(function(p){cop[p.email]=1});
+  var lista=k.P.filter(function(p){return(!q||(p.nombre+" "+p.email).toLowerCase().indexOf(q)>=0)&&(!CL.estado||p.estado===CL.estado)}).map(function(p){return Object.assign({otras:(gpt[p.email]?1:0)+(cop[p.email]?2:0)},p)});
+  $("lper-n").textContent=(lista.length===k.P.length?k.P.length+" personas.":lista.length+" de "+k.P.length+" personas.");
+  var cols=[COL.persona,COL.empresa,{k:"asiento",t:"Asiento"},{k:"rol",t:"Rol"},
+    {k:"estado",t:"Estado",html:function(f){var e=CL_ESTADO[f.estado];return '<span class="eti '+e[0]+'">'+e[1]+'</span>'},csv:function(f){return CL_ESTADO[f.estado][1]}},
+    {k:"req",t:"Peticiones",num:1,fmt:num},{k:"to",t:"Tokens salida",num:1,fmt:compacto},{k:"ti",t:"Tokens entrada",num:1,fmt:compacto}];
+  if(k.T.cr!=null)cols.push({k:"cache",t:"De caché",num:1,fmt:function(v){return v==null?"—":Math.round(v)+" %"}});
+  if(k.T.web!=null)cols.push({k:"web",t:"Búsquedas web",num:1,fmt:function(v){return v==null?"—":num(v)}});
+  if(k.hayGasto)cols.push({k:"neto",t:"Gasto extra",num:1,fmt:function(v){return v==null?"—":dinero(v,2)}});
+  if(k.hayBruto)cols.push({k:"bruto",t:"Antes de descuentos",num:1,fmt:function(v){return v==null?"—":dinero(v,2)}});
+  cols.push({k:"productos",t:"Productos"},{k:"modelo",t:"Modelo principal"},
+    {k:"otras",t:"También tiene",html:function(f){return(f.otras&1?'<span class="eti">ChatGPT</span> ':"")+(f.otras&2?'<span class="eti">Copilot</span>':"")||"—"},csv:function(f){return[f.otras&1?"ChatGPT":"",f.otras&2?"Copilot":""].filter(Boolean).join(" + ")}});
+  tabla("t-lper",cols,lista,{orden:{k:"to",dir:-1},nombre:"claude-personas"});
+};
+
+PEST["l-modelos"]=function(){
+  var k=clCalc();if(!k.mods.length)return clSinInforme();
+  var top=k.mods.slice().sort(function(a,b){return b.tt-a.tt})[0],caro=k.mods.filter(function(m){return m.neto>0}).sort(function(a,b){return b.neto-a.neto})[0];
+  var fam={};k.mods.forEach(function(m){fam[m.familia]=(fam[m.familia]||0)+m.tt});
+  var h=bloque("¿Qué modelos se usan?",clPeriodo(k)+(F.empresa?" · "+esc(F.empresa):""),
+    cifra({rot:"Modelos usados",val:num(k.mods.length),desc:"modelos distintos en el informe",tono:"oro"})+
+    cifra({rot:"El más usado",val:esc(top.nombre),texto:1,desc:compacto(top.tt)+" tokens · "+num(top.npers)+" personas",comp:"<b>"+pct1(top.tt,k.T.tt)+"</b> de todos los tokens"})+
+    (caro?cifra({rot:"Donde está el gasto extra",val:esc(caro.nombre),texto:1,desc:dinero(caro.neto,2)+" facturados aparte",comp:"<b>"+pct1(caro.neto,k.T.neto)+"</b> del gasto extra"}):"")+
+    cifra({rot:"Familias",val:num(Object.keys(fam).length),desc:Object.keys(fam).sort(function(a,b){return fam[b]-fam[a]}).map(function(f){return esc(f)+" "+pct1(fam[f],k.T.tt)}).join(" · "),ayuda:"Opus es el más capaz y el que más consume; Sonnet, el equilibrado; Haiku, el rápido y ligero."}));
+  return h+'<section class="fila dos">'+tarjeta("Tokens por modelo","Cuánto texto ha leído y escrito cada modelo.",'<div id="l-mt"></div>')+tarjeta("Personas por modelo","Cuántas personas han usado cada modelo.",'<div id="l-mp"></div>')+'</section>'+
+    tarjeta("Detalle por modelo","Peticiones, tokens y gasto extra de cada modelo en el periodo del informe.",'<div id="t-lmod"></div>'+clNota(),btnCsv("t-lmod"));
+};
+PEST["l-modelos"].despues=function(){
+  var k=clCalc();if(!k.mods.length)return;
+  $("l-mt").innerHTML=listaBarras(k.mods.slice().sort(function(a,b){return b.tt-a.tt}),"tt","var(--oro2)",compacto,true);
+  $("l-mp").innerHTML=listaBarras(k.mods.slice().sort(function(a,b){return b.npers-a.npers}),"npers","var(--azul)",num,true);
+  var cols=[{k:"nombre",t:"Modelo"},{k:"familia",t:"Familia"},{k:"npers",t:"Personas",num:1,fmt:num},{k:"req",t:"Peticiones",num:1,fmt:num},{k:"ti",t:"Tokens entrada",num:1,fmt:compacto},{k:"to",t:"Tokens salida",num:1,fmt:compacto},{k:"tt",t:"Tokens",num:1,fmt:compacto},
+    {k:"cuota",t:"% de los tokens",num:1,fmt:function(v){return dec(v)+" %"}}];
+  if(k.hayGasto)cols.push({k:"neto",t:"Gasto extra",num:1,fmt:function(v){return v==null?"—":dinero(v,2)}});
+  tabla("t-lmod",cols,k.mods.map(function(m){m.cuota=k.T.tt?m.tt/k.T.tt*100:0;return m}),{orden:{k:"tt",dir:-1},nombre:"claude-modelos"});
+};
+
+function clSinInforme(){return tarjeta("Falta un informe de gasto","Esta pestaña se rellena con el informe de gasto de claude.ai.",vacio("Súbelo en la pestaña <b>Informes</b>."))}
+PEST["l-productos"]=function(){
+  var k=clCalc();if(!k.prods.length)return clSinInforme();
+  var top=k.prods.slice().sort(function(a,b){return b.req-a.req})[0],varios=k.usan.filter(function(p){return p.nprod>1}).length;
+  var h=bloque("¿Para qué se usa Claude?","Cada petición pertenece a un producto · "+clPeriodo(k)+(F.empresa?" · "+esc(F.empresa):""),
+    cifra({rot:"Productos con uso",val:num(k.prods.length),desc:"de los que incluye el plan",tono:"oro"})+
+    cifra({rot:"El más usado",val:esc(top.nombre),texto:1,desc:num(top.req)+" peticiones · "+num(top.npers)+" personas",comp:"<b>"+pct1(top.req,k.T.req)+"</b> de las peticiones"})+
+    cifra({rot:"Usan más de uno",val:num(varios),desc:"personas que usan dos productos o más",comp:k.usan.length?"<b>"+pct(varios,k.usan.length)+" %</b> de quienes lo usan":""}));
+  return h+tarjeta("Detalle por producto","Qué es cada producto y cuánto se usa.",'<div id="t-lpro"></div>'+clNota(),btnCsv("t-lpro"));
+};
+PEST["l-productos"].despues=function(){
+  var k=clCalc();if(!k.prods.length)return;
+  var cols=[{k:"nombre",t:"Producto",html:function(a){return '<i class="pt" style="background:'+a.color+'"></i>'+esc(a.nombre)}},{k:"desc",t:"Para qué sirve",html:function(a){return '<span class="largo">'+esc(a.desc)+'</span>'}},
+    {k:"npers",t:"Personas",num:1,fmt:num},{k:"req",t:"Peticiones",num:1,fmt:num},{k:"tt",t:"Tokens",num:1,fmt:compacto}];
+  if(k.hayGasto)cols.push({k:"neto",t:"Gasto extra",num:1,fmt:function(v){return v==null?"—":dinero(v,2)}});
+  tabla("t-lpro",cols,k.prods,{orden:{k:"req",dir:-1},nombre:"claude-productos"});
+};
+
+function clEmpresas(){
+  var emp=F.empresa;F.empresa="";var k=clCalc();F.empresa=emp;
+  var m={};k.P.forEach(function(p){var e=m[p.empresa]||(m[p.empresa]={nombre:p.empresa,puestos:0,activos:0,sin:0,req:0,tt:0,neto:null,coste:0});
+    if(p.miembro){e.puestos++;if(p.estado==="activo")e.activos++;else e.sin++;e.coste+=p.precio}e.req+=p.req;e.tt+=p.tt;e.neto=suma(e.neto,p.neto)});
+  return{k:k,L:Object.keys(m).map(function(e){m[e].adop=pct(m[e].activos,m[e].puestos);return m[e]})};
+}
+PEST["l-empresas"]=function(){
+  var x=clEmpresas(),L=x.L;if(!L.length)return vacio("Todavía no hay datos de Claude.");
+  var mas=L.slice().sort(function(a,b){return b.tt-a.tt})[0];
+  return bloque("¿Qué empresas usan Claude?","Cada empresa se identifica por el dominio del correo · "+clPeriodo(x.k),
+    cifra({rot:"Empresas",val:num(L.length),desc:"con asiento o con uso de Claude",tono:"oro"})+
+    (mas&&mas.tt?cifra({rot:"La que más lo usa",val:esc(mas.nombre),texto:1,desc:compacto(mas.tt)+" tokens",comp:"<b>"+pct1(mas.tt,x.k.T.tt)+"</b> de todos los tokens"}):""))+
+    tarjeta("Detalle por empresa","«Con uso» dice cuántas personas de la empresa aparecen en el informe, de todas las que tienen asiento. Pulsa una fila para ver todo el apartado solo con esa empresa.",'<div id="t-lemp"></div>',btnCsv("t-lemp"));
+};
+PEST["l-empresas"].despues=function(){
+  var x=clEmpresas();if(!x.L.length)return;
+  var cols=[{k:"nombre",t:"Empresa"},{k:"puestos",t:"Asientos",num:1,fmt:num},{k:"adop",t:"Con uso",num:1,html:function(f){return cpBarra(f.activos,f.puestos)},csv:function(f){return f.activos+" de "+f.puestos}},
+    {k:"sin",t:"Sin uso",num:1,fmt:num},{k:"req",t:"Peticiones",num:1,fmt:num},{k:"tt",t:"Tokens",num:1,fmt:compacto}];
+  if(x.k.hayGasto)cols.push({k:"neto",t:"Gasto extra",num:1,fmt:function(v){return v==null?"—":dinero(v,2)}});
+  if(x.L.some(function(e){return e.coste}))cols.push({k:"coste",t:"Asientos/mes",num:1,fmt:function(v){return dinero(v)}});
+  tabla("t-lemp",cols,x.L,{orden:{k:"tt",dir:-1},nombre:"claude-empresas",click:function(f){F.empresa=F.empresa===f.nombre?"":f.nombre;$("f-empresa").value=F.empresa;todo()}});
+};
+
+PEST["l-informes"]=function(){
+  var C=D.claude,clave="";try{clave=sessionStorage.getItem("clave-subida")||""}catch(e){}
+  var h=tarjeta("Subir un fichero de Claude","El plan Team no tiene conexión automática: el panel se alimenta de los dos CSV que exporta claude.ai. El fichero se reconoce solo.",
+    (D.demo?vacio("En el modo de datos simulados no se pueden subir ficheros."):!C.subida?vacio("La subida no está activada. En el servidor, añade <code>DASH_CLAVE_SUBIDA=una-clave-larga</code> a <code>/etc/dashboard-ia.env</code> y reinicia con <code>sudo systemctl restart dashboard-ia</code>."):
+    '<div class="subida"><label>Fichero CSV<input type="file" id="l-fichero" accept=".csv,text/csv"></label>'+
+    '<label>Desde<input type="date" id="l-desde"></label><label>Hasta<input type="date" id="l-hasta"></label>'+
+    '<label>Clave de subida<input type="password" id="l-clave" autocomplete="off" value="'+esc(clave)+'"></label>'+
+    '<button class="btn principal" type="button" id="l-subir">Subir</button></div><div id="l-msg" class="pie-tabla" role="status"></div>'+
+    '<div class="pie-tabla">Las fechas solo hacen falta para el informe de gasto: pon las mismas que elegiste al exportarlo. Para la lista de miembros se ignoran. Un informe con las mismas fechas sustituye al anterior.</div>'));
+  h+='<section class="fila dos">'+tarjeta("Informe de gasto","Uso y gasto por persona y modelo. Conviene subir uno al mes.",
+    '<ol class="pasos"><li>En claude.ai, con una cuenta de Owner, pulsa tus iniciales (abajo a la izquierda) y entra en <b>Analytics</b>.</li><li>Baja hasta <b>How much is Claude costing?</b> y pulsa <b>Export spend report</b>.</li>'+
+    '<li>Elige el periodo. Lo más cómodo es <b>Last Month</b> a principios de cada mes; con <b>Custom</b> se llega hasta 90 días atrás.</li><li>Pulsa <b>Download</b> y sube aquí el fichero con esas mismas fechas.</li></ol>')+
+    tarjeta("Lista de miembros","Quién tiene asiento y de qué tipo. Súbela cuando cambie.",
+    '<ol class="pasos"><li>En claude.ai, entra en la configuración de la organización, en el apartado de miembros.</li><li>Exporta la lista a CSV.</li><li>Súbela aquí. No necesita fechas.</li></ol>')+'</section>';
+  h+=tarjeta("Ficheros cargados","Lo que el panel tiene guardado de Claude.",'<div id="t-linf"></div>');
+  return h;
+};
+PEST["l-informes"].despues=function(){
+  var C=D.claude,filas=C.informes.map(function(x){return{id:x.id,tipo:"Informe de gasto",periodo:fechaLarga(x.desde)+" a "+fechaLarga(x.hasta),orden:x.hasta,n:x.n,subido:x.subido,nombre:x.nombre}});
+  if(C.miembros)filas.push({id:"miembros",tipo:"Lista de miembros",periodo:"—",orden:"9",n:C.personas.filter(function(p){return p.miembro}).length,subido:C.miembros.subido,nombre:C.miembros.nombre});
+  tabla("t-linf",[{k:"tipo",t:"Tipo"},{k:"orden",t:"Periodo",html:function(f){return esc(f.periodo)}},{k:"n",t:"Filas",num:1,fmt:num},
+    {k:"subido",t:"Subido",num:1,fmt:function(v){return v?fechaLarga(v)+" "+v.slice(11,16):"—"}},{k:"nombre",t:"Fichero"},
+    {k:"id",t:"",html:function(f){return C.subida&&!D.demo?'<button class="btn" type="button" data-borrar="'+esc(f.id)+'">Borrar</button>':""}}],filas,{orden:{k:"orden",dir:-1},vacio:"Todavía no se ha subido ningún fichero."});
+};
+function clMsg(txt,bien){var m=$("l-msg");if(m){m.textContent=txt;m.style.color=bien?"var(--ok)":"var(--error)"}}
+function clEnviar(ruta,cuerpo){
+  var clave=($("l-clave")||{}).value||"";if(!clave){clMsg("Escribe la clave de subida.");return Promise.resolve()}
+  try{sessionStorage.setItem("clave-subida",clave)}catch(e){}
+  cuerpo.clave=clave;clMsg("Enviando…",true);
+  return fetch(ruta,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(cuerpo)}).then(function(r){return r.json()}).then(function(j){
+    if(!j.ok){clMsg(j.mensaje||"No se pudo completar.");return}
+    var txt=j.mensaje;CL.inf=null;TAB=TABM.claude="l-informes";return cargar().then(function(){clMsg(txt,true)});
+  }).catch(function(e){clMsg("No se pudo conectar con el servidor ("+e.message+").")});
+}
+document.addEventListener("click",function(e){
+  var b;
+  if(e.target.id==="l-subir"){
+    var f=$("l-fichero").files[0];if(!f){clMsg("Elige un fichero CSV.");return}
+    if(f.size>6e6){clMsg("El fichero es demasiado grande.");return}
+    var lector=new FileReader();
+    lector.onload=function(){clEnviar("api/claude/subir",{csv:String(lector.result),nombre:f.name,desde:$("l-desde").value,hasta:$("l-hasta").value})};
+    lector.onerror=function(){clMsg("No se pudo leer el fichero.")};lector.readAsText(f);
+  }else if((b=e.target.closest("[data-borrar]"))){
+    if(b.getAttribute("data-seguro")!=="1"){b.setAttribute("data-seguro","1");b.textContent="¿Seguro? Pulsa otra vez";return}
+    clEnviar("api/claude/borrar",{id:b.getAttribute("data-borrar")});
+  }
+});
+document.addEventListener("change",function(e){
+  if(e.target.id==="l-estado"){CL.estado=e.target.value;PEST["l-personas"].despues()}
+  if(e.target.id==="f-informe"){CL.inf=+e.target.value;todo()}
+  if(e.target.id==="l-fichero"&&e.target.files[0]){
+    /* si el nombre del fichero trae dos fechas, se proponen como periodo */
+    var m=e.target.files[0].name.match(/\d{4}-\d{2}-\d{2}/g);if(m&&m.length>=2&&!$("l-desde").value){$("l-desde").value=m[0];$("l-hasta").value=m[1]}
+  }
+});
+document.addEventListener("input",function(e){if(e.target.id==="l-buscar"){CL.buscar=e.target.value;PEST["l-personas"].despues()}});
+
 /* -------------------------------------------------------------- eventos */
 $("btn").addEventListener("click",function(){var b=this;b.disabled=true;b.textContent="Actualizando…";cargar("api/refrescar").then(function(){b.disabled=false;b.textContent="Actualizar"})});
 $("rangos").addEventListener("click",function(e){var b=e.target.closest("[data-rango]");if(b)fijarRango(+b.getAttribute("data-rango"))});
@@ -1607,7 +1870,7 @@ function escalar(){
 escalar();
 function reloj(){$("clock").textContent=fmtReloj(new Date())}
 reloj();setInterval(reloj,1000);
-var h0=(location.hash||"").slice(1);if(PEST[h0]){if(h0.indexOf("c-")===0){TABM.copilot=h0;ponerModo("copilot")}else{TAB=h0;TABM.chatgpt=h0}}
+var h0=(location.hash||"").slice(1);if(PEST[h0]){if(h0.indexOf("c-")===0){TABM.copilot=h0;ponerModo("copilot")}else if(h0.indexOf("l-")===0){TABM.claude=h0;ponerModo("claude")}else{TAB=h0;TABM.chatgpt=h0}}
 var tr;window.addEventListener("resize",function(){clearTimeout(tr);tr=setTimeout(function(){escalar();if(D&&!$("ficha").open)pintarTab()},180)});
 pintarTab();cargar();setInterval(function(){if(!$("ficha").open)cargar()},5*60*1000);
 })();

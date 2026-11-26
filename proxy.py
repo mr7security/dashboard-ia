@@ -24,6 +24,7 @@ Variables de entorno (ver dashboard-ia.env.ejemplo):
     COPILOT_CLIENT_ID      Id. de la aplicación registrada en Entra ID
     COPILOT_CLIENT_SECRET  Secreto de esa aplicación (permiso Reports.Read.All)
                            Un segundo tenant se añade con COPILOT2_..., COPILOT3_...
+    DASH_CLAVE_SUBIDA      Clave que pide el panel para subir los CSV de Claude (plan Team)
     DASH_USUARIO           Usuario para proteger el dashboard (opcional)
     DASH_CLAVE             Contraseña para proteger el dashboard (opcional)
 """
@@ -59,6 +60,8 @@ ARCHIVO_HISTORICO = DATA / "historico.csv"
 ARCHIVO_RELLENO = DATA / "relleno.json"
 ARCHIVO_LIMITES = DATA / "limites.json"
 ARCHIVO_COPILOT = DATA / "copilot.json"
+ARCHIVO_CLAUDE = DATA / "claude.json"
+MAX_SUBIDA = 8 * 1024 * 1024
 GRAPH = "https://graph.microsoft.com"
 ACCESO_MS = "https://login.microsoftonline.com"
 
@@ -89,6 +92,8 @@ CONFIG_POR_DEFECTO = {
     "precio_credito": 0,
     # Precio mensual de una licencia de Microsoft 365 Copilot, en la moneda del panel.
     "precio_copilot": 0,
+    # Precio mensual de cada tipo de asiento de Claude (plan Team), en la moneda del panel.
+    "precio_claude": {"standard": 0, "premium": 0},
     "dias_activo": 7,        # activo = con uso en los últimos N días
     "dias_reasignar": 30,    # candidato a reasignar = sin uso en N días
     "retencion_dias": 730,   # cuánto histórico de uso se conserva
@@ -510,6 +515,7 @@ def publico(cfg):
             "precio_credito": a_numero(cfg.get("precio_credito")),
             "dias_laborables_mes": int(a_numero(cfg.get("dias_laborables_mes"), 21) or 21),
             "precio_copilot": a_numero(cfg.get("precio_copilot")),
+            "precio_claude": cfg.get("precio_claude", {}),
             "dias_activo": int(cfg.get("dias_activo", 7)), "dias_reasignar": int(cfg.get("dias_reasignar", 30))}
 
 
@@ -876,6 +882,185 @@ def leer_copilot(cfg):
     return res
 
 
+# ------------------------------------------------------- Claude (plan Team)
+# El plan Team no tiene API de uso: se cargan los CSV que exporta claude.ai
+# (lista de miembros e informe de gasto) desde el propio panel.
+
+def columnas_csv(texto):
+    """Filas del CSV como diccionarios con la cabecera normalizada (minúsculas, sin signos)."""
+    texto = texto.lstrip("\ufeff")
+    try:
+        dialecto = csv.Sniffer().sniff(texto[:4000], delimiters=",;\t")
+    except csv.Error:
+        dialecto = csv.excel
+    lector = csv.reader(texto.splitlines(), dialecto)
+    cabecera = None
+    filas = []
+    for fila in lector:
+        if not any(c.strip() for c in fila):
+            continue
+        if cabecera is None:
+            cabecera = ["".join(ch if ch.isalnum() else "_" for ch in normalizar(c)).strip("_") for c in fila]
+            continue
+        filas.append({cabecera[i]: fila[i].strip() for i in range(min(len(cabecera), len(fila)))})
+    return cabecera or [], filas
+
+
+def columna(cabecera, *trozos, sin=()):
+    for c in cabecera:
+        if all(t in c for t in trozos) and not any(s in c for s in sin):
+            return c
+    return None
+
+
+def claude_importar(texto, nombre, desde, hasta):
+    """Guarda un CSV de claude.ai. Devuelve {ok, tipo, filas, mensaje}."""
+    cabecera, filas = columnas_csv(texto)
+    c_email = columna(cabecera, "email")
+    if not c_email or not filas:
+        return {"ok": False, "mensaje": "El fichero no parece un CSV de Claude: no tiene una columna con el correo."}
+    almacen = leer_json(ARCHIVO_CLAUDE, {})
+    if not isinstance(almacen, dict):
+        almacen = {}
+    almacen.setdefault("informes", [])
+    ahora = datetime.now().astimezone().isoformat(timespec="seconds")
+    c_tin, c_tout = columna(cabecera, "prompt"), columna(cabecera, "completion")
+    c_neto, c_bruto = columna(cabecera, "net"), columna(cabecera, "gross")
+    c_pet = columna(cabecera, "request")
+    if not (c_tin or c_tout or c_neto or c_bruto or c_pet):
+        c_asiento, c_rol = columna(cabecera, "seat") or columna(cabecera, "tier"), columna(cabecera, "role")
+        if not (c_asiento or c_rol):
+            return {"ok": False, "mensaje": "No reconozco las columnas. Espero la lista de miembros o el informe "
+                                           "de gasto (spend report) de claude.ai. Columnas: " + ", ".join(cabecera)}
+        c_nombre, c_estado = columna(cabecera, "name"), columna(cabecera, "status")
+        miembros = [{"email": f.get(c_email, "").lower(), "nombre": f.get(c_nombre, "") if c_nombre else "",
+                     "rol": f.get(c_rol, "") if c_rol else "", "estado": f.get(c_estado, "") if c_estado else "",
+                     "asiento": f.get(c_asiento, "") if c_asiento else ""} for f in filas if "@" in f.get(c_email, "")]
+        almacen["miembros"] = {"subido": ahora, "nombre": nombre, "filas": miembros}
+        escribir_json(ARCHIVO_CLAUDE, almacen)
+        return {"ok": True, "tipo": "miembros", "filas": len(miembros),
+                "mensaje": "Lista de miembros cargada: %d personas." % len(miembros)}
+    if not (fecha_iso(desde) and fecha_iso(hasta)) or desde > hasta:
+        return {"ok": False, "mensaje": "Indica las fechas «desde» y «hasta» del informe de gasto."}
+    c_prod, c_fam = columna(cabecera, "product"), columna(cabecera, "family")
+    c_mod = columna(cabecera, "model", sin=("family",))
+    c_unc, c_lee = columna(cabecera, "uncached"), columna(cabecera, "cache_read")
+    c_esc = [c for c in cabecera if "cache_write" in c]
+    c_web, c_actual = columna(cabecera, "web_search"), columna(cabecera, "current_member")
+    datos, fuera = [], set()
+    for f in filas:
+        email = f.get(c_email, "").lower()
+        if "@" not in email:
+            continue
+        modelo = f.get(c_mod, "") if c_mod else ""
+        familia = f.get(c_fam, "") if c_fam else ""
+        if not familia:   # el informe no siempre trae la familia: se saca del nombre del modelo
+            familia = next((x for x in ("opus", "sonnet", "haiku", "fable", "mythos") if x in modelo.lower()), "")
+        if c_actual and f.get(c_actual, "").lower() in ("false", "0", "no"):
+            fuera.add(email)
+        datos.append([email, f.get(c_prod, "") if c_prod else "", modelo, familia,
+                      a_entero(f.get(c_pet)) if c_pet else 0,
+                      a_entero(f.get(c_tin)) if c_tin else 0, a_entero(f.get(c_tout)) if c_tout else 0,
+                      round(a_numero(f.get(c_neto)), 4) if c_neto else None,
+                      round(a_numero(f.get(c_bruto)), 4) if c_bruto else None,
+                      a_entero(f.get(c_unc)) if c_unc else None, a_entero(f.get(c_lee)) if c_lee else None,
+                      sum(a_entero(f.get(c)) for c in c_esc) if c_esc else None,
+                      a_entero(f.get(c_web)) if c_web else None])
+    if not datos:
+        return {"ok": False, "mensaje": "El informe no tiene ninguna fila con uso."}
+    # Un informe del mismo periodo sustituye al anterior.
+    almacen["informes"] = [i for i in almacen["informes"] if (i.get("desde"), i.get("hasta")) != (desde, hasta)]
+    almacen["informes"].append({"id": "%s_%s" % (desde, hasta), "subido": ahora, "nombre": nombre,
+                                "desde": desde, "hasta": hasta, "filas": datos, "fuera": sorted(fuera)})
+    almacen["informes"].sort(key=lambda i: (i["hasta"], i["desde"]))
+    escribir_json(ARCHIVO_CLAUDE, almacen)
+    return {"ok": True, "tipo": "gasto", "filas": len(datos),
+            "mensaje": "Informe de gasto del %s al %s cargado: %d filas, %d personas." % (
+                desde, hasta, len(datos), len(set(d[0] for d in datos)))}
+
+
+def claude_borrar(ident):
+    almacen = leer_json(ARCHIVO_CLAUDE, {})
+    if not isinstance(almacen, dict):
+        return {"ok": False, "mensaje": "No hay nada guardado."}
+    if ident == "miembros":
+        almacen.pop("miembros", None)
+    else:
+        antes = len(almacen.get("informes", []))
+        almacen["informes"] = [i for i in almacen.get("informes", []) if i.get("id") != ident]
+        if len(almacen["informes"]) == antes:
+            return {"ok": False, "mensaje": "Ese informe ya no existe."}
+    escribir_json(ARCHIVO_CLAUDE, almacen)
+    return {"ok": True, "mensaje": "Borrado."}
+
+
+def tabla_claude(almacen, cfg, subida):
+    """Lo guardado de Claude, en tablas compactas para el panel."""
+    almacen = almacen if isinstance(almacen, dict) else {}
+    miembros = almacen.get("miembros") or {}
+    informes = almacen.get("informes") or []
+    res = {"estado": "ok" if (informes or miembros) else "sin_datos", "subida": bool(subida),
+           "miembros": {"subido": miembros.get("subido"), "nombre": miembros.get("nombre")} if miembros else None,
+           "personas": [], "informes": [], "productos": [], "modelos": [], "filas": []}
+    indice = {}
+
+    def persona(email, **extra):
+        if email not in indice:
+            indice[email] = len(res["personas"])
+            res["personas"].append({"email": email, "nombre": email.split("@")[0], "empresa": empresa_de(email, cfg),
+                                    "miembro": False, "rol": "", "estado": "", "asiento": ""})
+        res["personas"][indice[email]].update(extra)
+        return indice[email]
+
+    for m in miembros.get("filas", []):
+        persona(m["email"], nombre=m.get("nombre") or m["email"].split("@")[0], miembro=True, rol=m.get("rol", ""),
+                estado=m.get("estado", ""), asiento=m.get("asiento", ""))
+    productos, modelos = {}, {}
+    for n, inf in enumerate(informes):
+        res["informes"].append({"id": inf.get("id"), "nombre": inf.get("nombre", ""), "desde": inf.get("desde"),
+                                "hasta": inf.get("hasta"), "subido": inf.get("subido"), "n": len(inf.get("filas", [])),
+                                "fuera": [persona(e) for e in inf.get("fuera", [])]})
+        for f in inf.get("filas", []):
+            prod = productos.setdefault(f[1] or "Sin indicar", len(productos))
+            mod = modelos.setdefault((f[2] or f[3] or "Sin indicar", f[3] or ""), len(modelos))
+            res["filas"].append([n, persona(f[0]), prod, mod] + (f[4:13] + [None] * 4)[:9])
+    res["productos"] = list(productos)
+    res["modelos"] = [{"nombre": m[0], "familia": m[1]} for m in modelos]
+    return res
+
+
+def claude_demo(usuarios, cfg):
+    import random
+    azar = random.Random(11)
+    hoy = hoy_utc()
+    gente = usuarios[2:16]
+    miembros = [{"email": u["email"], "nombre": u["name"], "rol": "Primary Owner" if n == 0 else "User",
+                 "estado": "Active", "asiento": "Premium" if n % 3 == 0 else "Standard"} for n, u in enumerate(gente)]
+    modelos = [("claude-sonnet-5-5", "sonnet", 3.0), ("claude-opus-5-5", "opus", 15.0), ("claude-haiku-5-5", "haiku", 0.8)]
+    informes = []
+    for k, (ini, fin) in enumerate(((75, 46), (45, 16), (15, 1))):
+        filas = []
+        for n, u in enumerate(gente + [{"email": "antiguo1@beta.demo"}]):
+            if n in (4, 9) or (n == 14 and k == 2):
+                continue
+            for prod, peso in (("Chat", 1.0), ("Claude Code", 0.35 if n % 3 == 0 else 0), ("Cowork", 0.3 if n % 2 else 0)):
+                for mod, fam, precio in modelos:
+                    if not peso or azar.random() > (0.9 if fam == "sonnet" else 0.4):
+                        continue
+                    pet = int(azar.randint(5, 220) * peso * (1 + k * 0.25) * (4 if prod == "Claude Code" else 1))
+                    tin, tout = pet * azar.randint(2500, 9000), pet * azar.randint(400, 1500)
+                    bruto = (tin * precio + tout * precio * 5) / 1e6
+                    extra = round(bruto * 0.02, 2) if n in (2, 5) and fam == "opus" else 0.0
+                    lee = int(tin * 0.93)
+                    filas.append([u["email"], prod, mod, fam, pet, tin, tout, extra, extra,
+                                  tin - lee - int(tin * 0.05), lee, int(tin * 0.05), azar.randint(0, 9) if prod == "Chat" else 0])
+        desde, hasta = (hoy - timedelta(days=ini)).isoformat(), (hoy - timedelta(days=fin)).isoformat()
+        informes.append({"id": "%s_%s" % (desde, hasta), "subido": hasta + "T09:00:00+01:00",
+                         "nombre": "spend-report.csv", "desde": desde, "hasta": hasta, "filas": filas})
+    return tabla_claude({"miembros": {"subido": hoy.isoformat() + "T09:00:00+01:00", "nombre": "members.csv",
+                                      "filas": miembros}, "informes": informes}, cfg, False)
+
+
 def seguir_limites(limites):
     """Anota desde cuándo tiene cada persona su límite propio y guarda el historial."""
     previo = leer_json(ARCHIVO_LIMITES, None)
@@ -966,6 +1151,7 @@ def leer_real(cfg):
             fuente["avisos"].append("No se pudo guardar el historial de límites: %s" % e)
         except Exception as e:  # la pestaña de límites no debe tumbar el resto del panel
             tablas["limites"] = {"estado": "error", "mensaje": repr(e), "personas": [], "historial": []}
+    tablas["claude"] = tabla_claude(leer_json(ARCHIVO_CLAUDE, {}), cfg, os.environ.get("DASH_CLAVE_SUBIDA", "").strip())
     try:
         tablas["copilot"] = leer_copilot(cfg)
     except Exception as e:  # el apartado de Copilot no debe tumbar el de ChatGPT
@@ -1125,6 +1311,7 @@ def datos_demo(cfg):
         {"nombre": "Informática", "descripcion": "Sistemas y desarrollo", "miembros": correos[17:25] + correos[2:3]},
         {"nombre": "Pruebas", "descripcion": "Grupo vacío", "miembros": []}]}
     tablas["copilot"] = copilot_demo(usuarios, tablas_cfg)
+    tablas["claude"] = claude_demo(usuarios, tablas_cfg)
     actual = resumen_puestos(tablas, int(cfg.get("dias_activo", 7)))
     historico = [{"fecha": (date.today() - timedelta(days=d)).isoformat(),
                   "total": actual["total"] - d // 14, "activos": max(0, actual["activos"] - d // 10),
@@ -1155,6 +1342,7 @@ class Estado:
             cfg = self.cfg
             if self.demo:
                 cfg = dict(cfg, moneda="EUR", precio_puesto={"chatgpt": 20}, compromiso_anual=30000, precio_copilot=28,
+                           precio_claude={"standard": 22, "premium": 110},
                            contrato_inicio=(hoy_utc() - timedelta(days=70)).isoformat(),
                            usd_a_moneda=0.9, precio_credito=0)
                 fuente, tablas, historico, eventos = datos_demo(cfg)
@@ -1173,10 +1361,8 @@ class Estado:
                 "eventos": eventos,
             }
             datos.update(tablas)
-            cuerpo = json.dumps(datos, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-            comprimido = gzip.compress(cuerpo, 6)
-            with self.cerrojo:
-                self.cuerpo, self.comprimido = cuerpo, comprimido
+            self.datos = datos
+            self.publicar()
             r = resumen_puestos(tablas, int(cfg.get("dias_activo", 7)))
             con_creditos = sum(1 for f in tablas["uso"] if f[8] is not None)
             con_importe = sum(1 for f in tablas["uso"] if f[9] is not None)
@@ -1196,6 +1382,21 @@ class Estado:
                 len(tablas["uso"]), con_creditos, con_importe, txt_lim, txt_gr, " - AVISOS: " + " | ".join(fuente["avisos"]) if fuente["avisos"] else ""))
             if fuente["estado"] != "ok":
                 log("AVISO:", fuente["mensaje"])
+
+    def publicar(self):
+        cuerpo = json.dumps(self.datos, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        comprimido = gzip.compress(cuerpo, 6)
+        with self.cerrojo:
+            self.cuerpo, self.comprimido = cuerpo, comprimido
+
+    def recargar_claude(self):
+        """Tras subir o borrar un CSV de Claude: se rehace solo esa tabla, sin volver a llamar a las API."""
+        with self.en_curso:
+            if self.demo or not getattr(self, "datos", None):
+                return
+            self.datos["claude"] = tabla_claude(leer_json(ARCHIVO_CLAUDE, {}), self.cfg,
+                                                os.environ.get("DASH_CLAVE_SUBIDA", "").strip())
+            self.publicar()
 
     def bucle(self):
         while True:
@@ -1271,6 +1472,52 @@ def crear_manejador(estado):
             return self.responder(404, b"No encontrado", "text/plain; charset=utf-8")
 
         do_HEAD = do_GET
+
+        def do_POST(self):
+            ruta = urllib.parse.urlparse(self.path).path
+            if ruta not in ("/api/claude/subir", "/api/claude/borrar"):
+                return self.responder(404, b"No encontrado", "text/plain; charset=utf-8")
+
+            def json_(codigo, objeto):
+                self.responder(codigo, json.dumps(objeto, ensure_ascii=False).encode("utf-8"),
+                               "application/json; charset=utf-8")
+
+            if not self.autorizado():
+                return json_(401, {"ok": False, "mensaje": "Acceso restringido."})
+            clave_subida = os.environ.get("DASH_CLAVE_SUBIDA", "").strip()
+            if estado.demo or not clave_subida:
+                return json_(403, {"ok": False, "mensaje": "La subida de ficheros no está activada en el servidor: "
+                                                           "falta DASH_CLAVE_SUBIDA en /etc/dashboard-ia.env."})
+            # Solo JSON: un formulario de otra web no puede enviarlo sin permiso del navegador.
+            if "application/json" not in self.headers.get("Content-Type", ""):
+                return json_(415, {"ok": False, "mensaje": "Formato no admitido."})
+            try:
+                largo = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                largo = 0
+            if largo <= 0 or largo > MAX_SUBIDA:
+                return json_(413, {"ok": False, "mensaje": "El fichero está vacío o supera los 8 MB."})
+            try:
+                cuerpo = json.loads(self.rfile.read(largo).decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                return json_(400, {"ok": False, "mensaje": "No se pudo leer el envío."})
+            if not isinstance(cuerpo, dict) or not hmac.compare_digest(
+                    str(cuerpo.get("clave", "")).encode("utf-8"), clave_subida.encode("utf-8")):
+                time.sleep(1.5)  # frena los intentos de adivinar la clave
+                log("AVISO: clave de subida incorrecta desde", self.client_address[0])
+                return json_(403, {"ok": False, "mensaje": "La clave de subida no es correcta."})
+            try:
+                if ruta.endswith("/borrar"):
+                    res = claude_borrar(str(cuerpo.get("id", "")))
+                else:
+                    res = claude_importar(str(cuerpo.get("csv", "")), str(cuerpo.get("nombre", ""))[:120],
+                                          str(cuerpo.get("desde", ""))[:10], str(cuerpo.get("hasta", ""))[:10])
+            except OSError as e:
+                return json_(500, {"ok": False, "mensaje": "No se pudo guardar en el servidor: %s" % e})
+            if res.get("ok"):
+                log("Claude:", res["mensaje"], "- desde", self.client_address[0])
+                estado.recargar_claude()
+            return json_(200 if res.get("ok") else 400, res)
 
     return Manejador
 
