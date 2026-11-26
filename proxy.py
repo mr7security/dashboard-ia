@@ -20,6 +20,10 @@ Uso:
 Variables de entorno (ver dashboard-ia.env.ejemplo):
     CHATGPT_ADMIN_KEY      Admin key del workspace (Admin Console > Credentials)
     CHATGPT_WORKSPACE_ID   UUID del workspace de ChatGPT
+    COPILOT_TENANT_ID      Tenant de Microsoft 365 (opcional, para el apartado Copilot)
+    COPILOT_CLIENT_ID      Id. de la aplicación registrada en Entra ID
+    COPILOT_CLIENT_SECRET  Secreto de esa aplicación (permiso Reports.Read.All)
+                           Un segundo tenant se añade con COPILOT2_..., COPILOT3_...
     DASH_USUARIO           Usuario para proteger el dashboard (opcional)
     DASH_CLAVE             Contraseña para proteger el dashboard (opcional)
 """
@@ -54,6 +58,9 @@ ARCHIVO_EVENTOS = DATA / "eventos.csv"
 ARCHIVO_HISTORICO = DATA / "historico.csv"
 ARCHIVO_RELLENO = DATA / "relleno.json"
 ARCHIVO_LIMITES = DATA / "limites.json"
+ARCHIVO_COPILOT = DATA / "copilot.json"
+GRAPH = "https://graph.microsoft.com"
+ACCESO_MS = "https://login.microsoftonline.com"
 
 API_CHATGPT = "https://api.chatgpt.com/v1"
 MESES_RELLENO = 24
@@ -80,6 +87,8 @@ CONFIG_POR_DEFECTO = {
     # Importe de un crédito en la moneda del panel, si el contrato lo fija. Con 0 se
     # usa solo el importe que informe la API.
     "precio_credito": 0,
+    # Precio mensual de una licencia de Microsoft 365 Copilot, en la moneda del panel.
+    "precio_copilot": 0,
     "dias_activo": 7,        # activo = con uso en los últimos N días
     "dias_reasignar": 30,    # candidato a reasignar = sin uso en N días
     "retencion_dias": 730,   # cuánto histórico de uso se conserva
@@ -500,6 +509,7 @@ def publico(cfg):
             "usd_a_moneda": a_numero(cfg.get("usd_a_moneda"), 1.0) or 1.0,
             "precio_credito": a_numero(cfg.get("precio_credito")),
             "dias_laborables_mes": int(a_numero(cfg.get("dias_laborables_mes"), 21) or 21),
+            "precio_copilot": a_numero(cfg.get("precio_copilot")),
             "dias_activo": int(cfg.get("dias_activo", 7)), "dias_reasignar": int(cfg.get("dias_reasignar", 30))}
 
 
@@ -671,6 +681,201 @@ def leer_grupos(clave, ws, usuarios):
     return res
 
 
+# ------------------------------------------------------ Microsoft 365 Copilot
+
+NOMBRE_APP_COPILOT = {"copilotChat": "Copilot Chat", "microsoftTeams": "Teams", "word": "Word", "excel": "Excel",
+                      "powerPoint": "PowerPoint", "outlook": "Outlook", "oneNote": "OneNote", "loop": "Loop"}
+
+
+def tenants_copilot():
+    """Credenciales de cada tenant: COPILOT_..., COPILOT2_..., COPILOT3_..."""
+    lista = []
+    for prefijo in ["COPILOT"] + ["COPILOT%d" % n for n in range(2, 7)]:
+        t, c, s = (os.environ.get("%s_%s" % (prefijo, x), "").strip()
+                   for x in ("TENANT_ID", "CLIENT_ID", "CLIENT_SECRET"))
+        if t and c and s:
+            lista.append({"tenant": t, "cliente": c, "secreto": s,
+                          "nombre": os.environ.get(prefijo + "_NOMBRE", "").strip()})
+    return lista
+
+
+def peticion_ms(peticion):
+    try:
+        with urllib.request.urlopen(peticion, timeout=60) as r:
+            return json.loads(r.read().decode("utf-8-sig"))
+    except urllib.error.HTTPError as e:
+        detalle = ""
+        try:
+            cuerpo = json.loads(e.read().decode("utf-8"))
+            err = cuerpo.get("error")
+            detalle = (err.get("message", "") if isinstance(err, dict) else
+                       cuerpo.get("error_description") or str(err or ""))
+        except Exception:
+            pass
+        error = ErrorAPI("HTTP %s de Microsoft: %s" % (e.code, detalle.splitlines()[0][:300] if detalle else ""))
+        error.codigo = e.code
+        raise error from None
+    except (urllib.error.URLError, TimeoutError, ValueError) as e:
+        raise ErrorAPI("Sin respuesta de Microsoft: %s" % e) from None
+
+
+def graph_token(t):
+    datos = urllib.parse.urlencode({"grant_type": "client_credentials", "client_id": t["cliente"],
+                                    "client_secret": t["secreto"],
+                                    "scope": GRAPH + "/.default"}).encode("ascii")
+    r = peticion_ms(urllib.request.Request(
+        "%s/%s/oauth2/v2.0/token" % (ACCESO_MS, urllib.parse.quote(t["tenant"], safe="")), data=datos,
+        headers={"Content-Type": "application/x-www-form-urlencoded"}))
+    if not r.get("access_token"):
+        raise ErrorAPI("Microsoft no devolvió un token de acceso")
+    return r["access_token"]
+
+
+def graph_lista(ruta, token):
+    """Todas las páginas de un informe de Graph (sigue @odata.nextLink)."""
+    url, filas, vistos = GRAPH + ruta, [], set()
+    for _ in range(500):
+        r = peticion_ms(urllib.request.Request(url, headers={"Authorization": "Bearer " + token,
+                                                             "Accept": "application/json"}))
+        filas.extend(r.get("value") or [])
+        url = r.get("@odata.nextLink")
+        if not url or url in vistos or not url.startswith(GRAPH):
+            break
+        vistos.add(url)
+    return filas
+
+
+def app_copilot(clave, sufijo):
+    """microsoftTeamsCopilotLastActivityDate -> microsoftTeams; wordActiveUsers -> word."""
+    base = clave[:-len(sufijo)]
+    if base != "copilotChat" and base.endswith("Copilot"):
+        base = base[:-len("Copilot")]
+    return base
+
+
+def fecha_iso(valor):
+    valor = str(valor or "")[:10]
+    return valor if len(valor) == 10 and valor[4] == "-" else None
+
+
+def copilot_tenant(t, cfg):
+    """Informes de uso de Microsoft 365 Copilot de un tenant."""
+    token = graph_token(t)
+    detalle = graph_lista("/beta/reports/getMicrosoft365CopilotUsageUserDetail(period='D180')"
+                          "?$format=application/json", token)
+    personas, refresco = [], None
+    for f in detalle:
+        if not isinstance(f, dict):
+            continue
+        upn = str(f.get("userPrincipalName") or "").strip().lower()
+        apps = {}
+        for clave, valor in f.items():
+            if clave.endswith("LastActivityDate") and clave != "lastActivityDate" and fecha_iso(valor):
+                apps[app_copilot(clave, "LastActivityDate")] = fecha_iso(valor)
+        ultima = fecha_iso(f.get("lastActivityDate")) or (max(apps.values()) if apps else None)
+        refresco = max(refresco or "", fecha_iso(f.get("reportRefreshDate")) or "") or None
+        personas.append({"email": upn, "nombre": str(f.get("displayName") or "").strip() or upn.split("@")[0],
+                         "empresa": empresa_de(upn, cfg) if "@" in upn else "—",
+                         "tenant": t["nombre"], "ultima": ultima, "apps": apps})
+    tendencia, aviso = {}, ""
+    try:
+        bruto = graph_lista("/beta/reports/getMicrosoft365CopilotUserCountTrend(period='D180')"
+                            "?$format=application/json", token)
+        dias = []
+        for b in bruto:
+            if isinstance(b, dict):
+                dias.extend(b.get("adoptionByDate") or ([b] if b.get("reportDate") else []))
+        for d in dias:
+            fecha = fecha_iso(d.get("reportDate"))
+            if not fecha:
+                continue
+            x = {"activos": a_entero(d.get("anyAppActiveUsers")), "licencias": a_entero(d.get("anyAppEnabledUsers")),
+                 "apps": {}}
+            for clave, valor in d.items():
+                if clave.endswith("ActiveUsers") and clave != "anyAppActiveUsers":
+                    x["apps"][app_copilot(clave, "ActiveUsers")] = a_entero(valor)
+            tendencia[fecha] = x
+    except ErrorAPI as e:
+        aviso = "No se pudo leer la tendencia diaria de Copilot: %s" % e
+    return personas, tendencia, refresco, aviso
+
+
+def leer_copilot(cfg):
+    """Licencias y uso de Microsoft 365 Copilot, de uno o varios tenants."""
+    res = {"estado": "ok", "mensaje": "", "avisos": [], "actualizado": None, "anonimo": False, "tenants": 0,
+           "apps": [], "personas": [], "tendencia": [], "dias": [], "actividad": [], "inicio": None}
+    tenants = tenants_copilot()
+    almacen = leer_json(ARCHIVO_COPILOT, {})
+    if not isinstance(almacen, dict):
+        almacen = {}
+    if not tenants:
+        res["estado"] = "sin_configurar"
+        return res
+    personas, tendencia, errores = [], {}, []
+    for t in tenants:
+        try:
+            pers, tend, refresco, aviso = copilot_tenant(t, cfg)
+        except ErrorAPI as e:
+            errores.append(e)
+            continue
+        res["tenants"] += 1
+        personas.extend(pers)
+        res["actualizado"] = max(res["actualizado"] or "", refresco or "") or None
+        if aviso:
+            res["avisos"].append(aviso)
+        for fecha, x in tend.items():
+            y = tendencia.setdefault(fecha, {"activos": 0, "licencias": 0, "apps": {}})
+            y["activos"] += x["activos"]
+            y["licencias"] += x["licencias"]
+            for a, n in x["apps"].items():
+                y["apps"][a] = y["apps"].get(a, 0) + n
+    if errores and not res["tenants"]:
+        e = errores[0]
+        res.update(estado="sin_permiso" if getattr(e, "codigo", None) in (401, 403) else "error", mensaje=str(e))
+        ultimo = almacen.get("ultimo")
+        if isinstance(ultimo, dict):   # se enseña lo último que se pudo leer
+            res.update({k: ultimo[k] for k in ("actualizado", "anonimo", "apps", "personas", "tendencia") if k in ultimo})
+            res["guardado"] = True
+    else:
+        for e in errores:
+            res["avisos"].append("Un tenant no respondió: %s" % e)
+        # Con los nombres ocultos, Microsoft devuelve un código en vez del correo.
+        res["anonimo"] = bool(personas) and not any("@" in p["email"] for p in personas)
+        res["personas"] = personas
+        res["tendencia"] = [dict(tendencia[f], fecha=f) for f in sorted(tendencia)]
+        usadas = set(a for p in personas for a in p["apps"]) | set(a for x in tendencia.values() for a in x["apps"])
+        orden = list(NOMBRE_APP_COPILOT) + sorted(usadas - set(NOMBRE_APP_COPILOT))
+        res["apps"] = [{"id": a, "nombre": NOMBRE_APP_COPILOT.get(a, a)} for a in orden
+                       if a in usadas or a in NOMBRE_APP_COPILOT]
+    # Microsoft solo da la última fecha de uso de cada aplicación. Guardándola en cada
+    # lectura se va formando el histórico de qué días usó Copilot cada persona.
+    hoy = hoy_utc().isoformat()
+    dias = almacen.get("dias") if isinstance(almacen.get("dias"), dict) else {}
+    if res["estado"] == "ok" and not res["anonimo"]:
+        for p in res["personas"]:
+            for a, fecha in p["apps"].items():
+                dia = dias.setdefault(fecha, {}).setdefault(p["email"], [])
+                if a not in dia:
+                    dia.append(a)
+        limite = (hoy_utc() - timedelta(days=int(cfg.get("retencion_dias", 730)))).isoformat()
+        dias = {f: v for f, v in dias.items() if f >= limite}
+        almacen = {"v": 1, "inicio": almacen.get("inicio") or hoy, "dias": dias,
+                   "ultimo": {k: res[k] for k in ("actualizado", "anonimo", "apps", "personas", "tendencia")}}
+        try:
+            escribir_json(ARCHIVO_COPILOT, almacen)
+        except OSError as e:
+            res["avisos"].append("No se pudo guardar el histórico de Copilot: %s" % e)
+    res["inicio"] = almacen.get("inicio")
+    indice = {p["email"]: i for i, p in enumerate(res["personas"])}
+    ids = [a["id"] for a in res["apps"]]
+    res["dias"] = sorted(dias)
+    for d, fecha in enumerate(res["dias"]):
+        for email, apps in dias[fecha].items():
+            if email in indice:
+                res["actividad"].append([d, indice[email], [ids.index(a) for a in apps if a in ids]])
+    return res
+
+
 def seguir_limites(limites):
     """Anota desde cuándo tiene cada persona su límite propio y guarda el historial."""
     previo = leer_json(ARCHIVO_LIMITES, None)
@@ -761,6 +966,11 @@ def leer_real(cfg):
             fuente["avisos"].append("No se pudo guardar el historial de límites: %s" % e)
         except Exception as e:  # la pestaña de límites no debe tumbar el resto del panel
             tablas["limites"] = {"estado": "error", "mensaje": repr(e), "personas": [], "historial": []}
+    try:
+        tablas["copilot"] = leer_copilot(cfg)
+    except Exception as e:  # el apartado de Copilot no debe tumbar el de ChatGPT
+        tablas["copilot"] = {"estado": "error", "mensaje": repr(e), "avisos": [], "personas": [], "apps": [],
+                             "tendencia": [], "dias": [], "actividad": []}
     tablas["grupos"] = {"estado": "sin_datos", "mensaje": "", "grupos": [], "fallos": 0}
     if fuente["estado"] == "ok":
         try:
@@ -778,6 +988,43 @@ def leer_real(cfg):
 
 
 # ------------------------------------------------------------------------ demo
+
+def copilot_demo(usuarios, cfg):
+    import random
+    azar = random.Random(7)
+    hoy = hoy_utc()
+    refresco = hoy - timedelta(days=2)
+    ids = list(NOMBRE_APP_COPILOT)
+    pesos = [0.9, 0.75, 0.5, 0.45, 0.3, 0.6, 0.08, 0.05]
+    personas, dias = [], {}
+    con_licencia = usuarios[:22] + [{"email": "solo.copilot%d@alfa.demo" % n, "name": "Solo Copilot %d" % n}
+                                    for n in (1, 2, 3)]
+    for n, u in enumerate(con_licencia):
+        constancia = 0 if n in (5, 13) else azar.choice([0.05, 0.25, 0.5, 0.8, 0.9])
+        apps = {}
+        for d in range(120, -1, -1):
+            fecha = refresco - timedelta(days=d)
+            if fecha.weekday() >= 5 or azar.random() > constancia:
+                continue
+            for a, peso in zip(ids, pesos):
+                if azar.random() < peso * 0.6:
+                    apps[a] = fecha.isoformat()
+                    dias.setdefault(fecha.isoformat(), {}).setdefault(n, []).append(ids.index(a))
+        personas.append({"email": u["email"], "nombre": u.get("name") or u["email"], "tenant": "",
+                         "empresa": empresa_de(u["email"], cfg),
+                         "ultima": max(apps.values()) if apps else None, "apps": apps})
+    fechas = sorted(dias)
+    tendencia = []
+    for d in range(120, -1, -1):
+        f = (refresco - timedelta(days=d)).isoformat()
+        hoy_d = dias.get(f, {})
+        tendencia.append({"fecha": f, "activos": len(hoy_d), "licencias": len(personas) - (3 if d > 60 else 0),
+                          "apps": {a: sum(1 for v in hoy_d.values() if i in v) for i, a in enumerate(ids)}})
+    return {"estado": "ok", "mensaje": "", "avisos": [], "actualizado": refresco.isoformat(), "anonimo": False,
+            "tenants": 1, "apps": [{"id": a, "nombre": NOMBRE_APP_COPILOT[a]} for a in ids], "personas": personas,
+            "tendencia": tendencia, "dias": fechas, "inicio": (hoy - timedelta(days=20)).isoformat(),
+            "actividad": [[fechas.index(f), n, apps] for f in fechas for n, apps in dias[f].items()]}
+
 
 def datos_demo(cfg):
     """Datos simulados con el mismo formato que devuelve la API. No toca el disco."""
@@ -877,6 +1124,7 @@ def datos_demo(cfg):
         {"nombre": "Diseño", "descripcion": "", "miembros": correos[11:17]},
         {"nombre": "Informática", "descripcion": "Sistemas y desarrollo", "miembros": correos[17:25] + correos[2:3]},
         {"nombre": "Pruebas", "descripcion": "Grupo vacío", "miembros": []}]}
+    tablas["copilot"] = copilot_demo(usuarios, tablas_cfg)
     actual = resumen_puestos(tablas, int(cfg.get("dias_activo", 7)))
     historico = [{"fecha": (date.today() - timedelta(days=d)).isoformat(),
                   "total": actual["total"] - d // 14, "activos": max(0, actual["activos"] - d // 10),
@@ -906,7 +1154,7 @@ class Estado:
         with self.en_curso:
             cfg = self.cfg
             if self.demo:
-                cfg = dict(cfg, moneda="EUR", precio_puesto={"chatgpt": 20}, compromiso_anual=30000,
+                cfg = dict(cfg, moneda="EUR", precio_puesto={"chatgpt": 20}, compromiso_anual=30000, precio_copilot=28,
                            contrato_inicio=(hoy_utc() - timedelta(days=70)).isoformat(),
                            usd_a_moneda=0.9, precio_credito=0)
                 fuente, tablas, historico, eventos = datos_demo(cfg)
@@ -938,6 +1186,11 @@ class Estado:
             gr = tablas.get("grupos") or {}
             txt_gr = "%s (%s grupos, %s fallos)%s" % (gr.get("estado"), len(gr.get("grupos", [])), gr.get("fallos", 0),
                                                     " " + gr["mensaje"] if gr.get("mensaje") else "")
+            cp = tablas.get("copilot") or {}
+            txt_gr += " - copilot: %s (%s licencias, %s tenants%s)%s" % (
+                cp.get("estado"), len(cp.get("personas", [])), cp.get("tenants", 0),
+                ", nombres ocultos" if cp.get("anonimo") else "",
+                " " + " | ".join([cp.get("mensaje", "")] + cp.get("avisos", [])).strip(" |"))
             log("Datos actualizados - ChatGPT: %s (%s puestos, %s activos, %s sin uso) - %s días de uso, %s filas (%s con créditos, %s con importe) - límites: %s - grupos: %s%s" % (
                 fuente["estado"], r["total"], r["activos"], r["sin_uso"], len(tablas["dias"]),
                 len(tablas["uso"]), con_creditos, con_importe, txt_lim, txt_gr, " - AVISOS: " + " | ".join(fuente["avisos"]) if fuente["avisos"] else ""))
