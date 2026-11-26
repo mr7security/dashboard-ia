@@ -9,6 +9,7 @@
   "contrato_inicio": "",
   "usd_a_moneda": 1,
   "precio_credito": 0,
+  "precio_copilot": 0,
   "dias_activo": 7,
   "dias_reasignar": 30,
   "empresas": {

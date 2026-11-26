@@ -52,6 +52,25 @@ Admin Console > workspace > **Credentials > Admin keys > Create new admin key**.
 Permisos **Custom**, en **Read**: Enterprise analytics API, Users y Usage limits (este último solo lo usa la pestaña Límites). Hace falta rol
 Owner o Admin del workspace. El UUID del workspace va en `CHATGPT_WORKSPACE_ID`.
 
+## Apartado Copilot (opcional)
+
+El conmutador **ChatGPT / Copilot** de la cabecera cambia el panel entero. El apartado
+Copilot lee los informes de uso de Microsoft 365 Copilot con Microsoft Graph
+(`getMicrosoft365CopilotUsageUserDetail` y `getMicrosoft365CopilotUserCountTrend`).
+
+1. En Entra ID, registra una aplicación y dale el permiso de aplicación
+   `Reports.Read.All` de Microsoft Graph, con consentimiento de administrador.
+2. Crea un secreto de cliente.
+3. Añade a `/etc/dashboard-ia.env` las variables `COPILOT_TENANT_ID`,
+   `COPILOT_CLIENT_ID` y `COPILOT_CLIENT_SECRET` (un segundo tenant: `COPILOT2_...`).
+4. Pon el precio de la licencia en `precio_copilot` de `config.json`.
+
+Microsoft solo informa de la última fecha de uso de cada persona en cada aplicación,
+con unos dos días de retraso: no hay mensajes ni consumo. El panel guarda esas fechas
+en `data/copilot.json` para ir formando el histórico diario. Si el tenant oculta los
+nombres en los informes, hay que desactivarlo en el Centro de administración de
+Microsoft 365 (Configuración de la organización → Informes).
+
 ## Configuración (`config.json`)
 
 - `puerto`, `escucha`: dónde escucha el servidor (por defecto `0.0.0.0:8091`).
