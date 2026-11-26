@@ -81,8 +81,10 @@ los dos CSV que exporta claude.ai y que se suben desde la pestaña **Informes**:
   por persona, producto y modelo. Viene sumado para el periodo elegido, sin detalle
   por día, y llega hasta 90 días atrás. Al subirlo se indican sus fechas.
 
-Para activar la subida, define `DASH_CLAVE_SUBIDA` en `/etc/dashboard-ia.env`; el panel
-la pide en cada subida o borrado. El precio de cada tipo de asiento va en
+Solo el **modo administrador** puede subir y borrar ficheros. Se activa definiendo
+`DASH_CLAVE_ADMIN` en `/etc/dashboard-ia.env`; el botón «Administrador» de la cabecera
+pide esa contraseña y abre una sesión de 8 horas. El resto de personas ve el panel sin
+esos botones. El precio de cada tipo de asiento va en
 `precio_claude` de `config.json`. Lo subido se guarda en `data/claude.json`.
 
 ## Configuración (`config.json`)

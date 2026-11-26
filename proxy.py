@@ -24,7 +24,8 @@ Variables de entorno (ver dashboard-ia.env.ejemplo):
     COPILOT_CLIENT_ID      Id. de la aplicación registrada en Entra ID
     COPILOT_CLIENT_SECRET  Secreto de esa aplicación (permiso Reports.Read.All)
                            Un segundo tenant se añade con COPILOT2_..., COPILOT3_...
-    DASH_CLAVE_SUBIDA      Clave que pide el panel para subir los CSV de Claude (plan Team)
+    DASH_CLAVE_ADMIN       Contraseña del modo administrador, el único que puede subir y
+                           borrar los CSV de Claude (plan Team)
     DASH_USUARIO           Usuario para proteger el dashboard (opcional)
     DASH_CLAVE             Contraseña para proteger el dashboard (opcional)
 """
@@ -34,8 +35,10 @@ import base64
 import csv
 import gzip
 import hmac
+from http.cookies import SimpleCookie
 import json
 import os
+import secrets
 import socket
 import sys
 import threading
@@ -62,6 +65,7 @@ ARCHIVO_LIMITES = DATA / "limites.json"
 ARCHIVO_COPILOT = DATA / "copilot.json"
 ARCHIVO_CLAUDE = DATA / "claude.json"
 MAX_SUBIDA = 8 * 1024 * 1024
+HORAS_SESION_ADMIN = 8
 GRAPH = "https://graph.microsoft.com"
 ACCESO_MS = "https://login.microsoftonline.com"
 
@@ -886,6 +890,11 @@ def leer_copilot(cfg):
 # El plan Team no tiene API de uso: se cargan los CSV que exporta claude.ai
 # (lista de miembros e informe de gasto) desde el propio panel.
 
+def clave_admin():
+    """Contraseña del modo administrador (DASH_CLAVE_SUBIDA es el nombre antiguo)."""
+    return (os.environ.get("DASH_CLAVE_ADMIN") or os.environ.get("DASH_CLAVE_SUBIDA") or "").strip()
+
+
 def columnas_csv(texto):
     """Filas del CSV como diccionarios con la cabecera normalizada (minúsculas, sin signos)."""
     texto = texto.lstrip("\ufeff")
@@ -1151,7 +1160,7 @@ def leer_real(cfg):
             fuente["avisos"].append("No se pudo guardar el historial de límites: %s" % e)
         except Exception as e:  # la pestaña de límites no debe tumbar el resto del panel
             tablas["limites"] = {"estado": "error", "mensaje": repr(e), "personas": [], "historial": []}
-    tablas["claude"] = tabla_claude(leer_json(ARCHIVO_CLAUDE, {}), cfg, os.environ.get("DASH_CLAVE_SUBIDA", "").strip())
+    tablas["claude"] = tabla_claude(leer_json(ARCHIVO_CLAUDE, {}), cfg, clave_admin())
     try:
         tablas["copilot"] = leer_copilot(cfg)
     except Exception as e:  # el apartado de Copilot no debe tumbar el de ChatGPT
@@ -1395,7 +1404,7 @@ class Estado:
             if self.demo or not getattr(self, "datos", None):
                 return
             self.datos["claude"] = tabla_claude(leer_json(ARCHIVO_CLAUDE, {}), self.cfg,
-                                                os.environ.get("DASH_CLAVE_SUBIDA", "").strip())
+                                                clave_admin())
             self.publicar()
 
     def bucle(self):
@@ -1417,6 +1426,8 @@ def crear_manejador(estado):
     usuario = os.environ.get("DASH_USUARIO", "")
     clave = os.environ.get("DASH_CLAVE", "")
     esperado = base64.b64encode(("%s:%s" % (usuario, clave)).encode()).decode() if usuario and clave else None
+
+    sesiones, fallos, cerrojo_admin = {}, {}, threading.Lock()
 
     class Manejador(BaseHTTPRequestHandler):
         server_version = "dashboard-ia"
@@ -1461,6 +1472,9 @@ def crear_manejador(estado):
                     return self.responder(200, ARCHIVO_HTML.read_bytes(), "text/html; charset=utf-8")
                 except OSError:
                     return self.responder(500, b"Falta index.html", "text/plain; charset=utf-8")
+            if ruta == "/api/admin/estado":
+                return self.responder(200, json.dumps({"admin": self.es_admin(), "activo": bool(clave_admin())
+                                                       and not estado.demo}).encode(), "application/json")
             if ruta == "/api/datos":
                 return self.datos()
             if ruta == "/api/refrescar":
@@ -1473,21 +1487,33 @@ def crear_manejador(estado):
 
         do_HEAD = do_GET
 
+        def es_admin(self):
+            """Sesión de administrador válida, por la cookie que se da al entrar."""
+            galleta = SimpleCookie()
+            try:
+                galleta.load(self.headers.get("Cookie", ""))
+            except Exception:
+                return False
+            ficha = galleta.get("dash_admin")
+            with cerrojo_admin:
+                caduca = sesiones.get(ficha.value) if ficha else None
+                if caduca and caduca > time.time():
+                    return True
+                if ficha:
+                    sesiones.pop(ficha.value, None)
+            return False
+
         def do_POST(self):
             ruta = urllib.parse.urlparse(self.path).path
-            if ruta not in ("/api/claude/subir", "/api/claude/borrar"):
+            if ruta not in ("/api/admin/entrar", "/api/admin/salir", "/api/claude/subir", "/api/claude/borrar"):
                 return self.responder(404, b"No encontrado", "text/plain; charset=utf-8")
 
-            def json_(codigo, objeto):
+            def json_(codigo, objeto, extra=None):
                 self.responder(codigo, json.dumps(objeto, ensure_ascii=False).encode("utf-8"),
-                               "application/json; charset=utf-8")
+                               "application/json; charset=utf-8", extra)
 
             if not self.autorizado():
                 return json_(401, {"ok": False, "mensaje": "Acceso restringido."})
-            clave_subida = os.environ.get("DASH_CLAVE_SUBIDA", "").strip()
-            if estado.demo or not clave_subida:
-                return json_(403, {"ok": False, "mensaje": "La subida de ficheros no está activada en el servidor: "
-                                                           "falta DASH_CLAVE_SUBIDA en /etc/dashboard-ia.env."})
             # Solo JSON: un formulario de otra web no puede enviarlo sin permiso del navegador.
             if "application/json" not in self.headers.get("Content-Type", ""):
                 return json_(415, {"ok": False, "mensaje": "Formato no admitido."})
@@ -1496,16 +1522,56 @@ def crear_manejador(estado):
             except ValueError:
                 largo = 0
             if largo <= 0 or largo > MAX_SUBIDA:
-                return json_(413, {"ok": False, "mensaje": "El fichero está vacío o supera los 8 MB."})
+                return json_(413, {"ok": False, "mensaje": "El envío está vacío o supera los 8 MB."})
             try:
                 cuerpo = json.loads(self.rfile.read(largo).decode("utf-8"))
             except (ValueError, UnicodeDecodeError):
                 return json_(400, {"ok": False, "mensaje": "No se pudo leer el envío."})
-            if not isinstance(cuerpo, dict) or not hmac.compare_digest(
-                    str(cuerpo.get("clave", "")).encode("utf-8"), clave_subida.encode("utf-8")):
-                time.sleep(1.5)  # frena los intentos de adivinar la clave
-                log("AVISO: clave de subida incorrecta desde", self.client_address[0])
-                return json_(403, {"ok": False, "mensaje": "La clave de subida no es correcta."})
+            if not isinstance(cuerpo, dict):
+                return json_(400, {"ok": False, "mensaje": "No se pudo leer el envío."})
+
+            if ruta == "/api/admin/salir":
+                galleta = SimpleCookie()
+                try:
+                    galleta.load(self.headers.get("Cookie", ""))
+                    with cerrojo_admin:
+                        sesiones.pop(galleta["dash_admin"].value, None)
+                except Exception:
+                    pass
+                return json_(200, {"ok": True, "admin": False},
+                             {"Set-Cookie": "dash_admin=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"})
+
+            if ruta == "/api/admin/entrar":
+                clave = clave_admin()
+                if estado.demo or not clave:
+                    return json_(403, {"ok": False, "mensaje": "El modo administrador no está activado en el servidor: "
+                                                               "falta DASH_CLAVE_ADMIN en /etc/dashboard-ia.env."})
+                ip, ahora = self.client_address[0], time.time()
+                with cerrojo_admin:
+                    recientes = [t for t in fallos.get(ip, []) if ahora - t < 600]
+                    fallos[ip] = recientes
+                if len(recientes) >= 5:
+                    return json_(429, {"ok": False, "mensaje": "Demasiados intentos. Espera 10 minutos."})
+                if not hmac.compare_digest(str(cuerpo.get("clave", "")).encode("utf-8"), clave.encode("utf-8")):
+                    with cerrojo_admin:
+                        fallos.setdefault(ip, []).append(ahora)
+                    time.sleep(1.5)  # frena los intentos de adivinar la contraseña
+                    log("AVISO: contraseña de administrador incorrecta desde", ip)
+                    return json_(403, {"ok": False, "mensaje": "La contraseña no es correcta."})
+                ficha = secrets.token_urlsafe(32)
+                with cerrojo_admin:
+                    for t in [t for t, c in sesiones.items() if c <= ahora]:
+                        del sesiones[t]
+                    sesiones[ficha] = ahora + HORAS_SESION_ADMIN * 3600
+                    fallos.pop(ip, None)
+                log("Modo administrador: sesión abierta desde", ip)
+                return json_(200, {"ok": True, "admin": True}, {
+                    "Set-Cookie": "dash_admin=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Strict" % (
+                        ficha, HORAS_SESION_ADMIN * 3600)})
+
+            if not self.es_admin():
+                return json_(403, {"ok": False, "admin": False,
+                                   "mensaje": "Solo el administrador puede hacer esto. Entra en el modo administrador."})
             try:
                 if ruta.endswith("/borrar"):
                     res = claude_borrar(str(cuerpo.get("id", "")))
@@ -1515,7 +1581,7 @@ def crear_manejador(estado):
             except OSError as e:
                 return json_(500, {"ok": False, "mensaje": "No se pudo guardar en el servidor: %s" % e})
             if res.get("ok"):
-                log("Claude:", res["mensaje"], "- desde", self.client_address[0])
+                log("Claude:", res["mensaje"], "- administrador desde", self.client_address[0])
                 estado.recargar_claude()
             return json_(200 if res.get("ok") else 400, res)
 
